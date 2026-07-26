@@ -1,15 +1,19 @@
 # SGL
 
+[![Java CI](https://github.com/rodolfodpk/spring-graphql-lab/actions/workflows/maven.yml/badge.svg)](https://github.com/rodolfodpk/spring-graphql-lab/actions/workflows/maven.yml)
+[![codecov](https://codecov.io/gh/rodolfodpk/spring-graphql-lab/branch/main/graph/badge.svg)](https://codecov.io/gh/rodolfodpk/spring-graphql-lab)
+[![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
+
 SGL is a local reference implementation of Apollo Federation with two
 synchronous Spring Boot GraphQL subgraphs. It demonstrates how independently
 owned schemas compose into one client-facing graph without a database, cloud
 account, or paid Apollo service.
 
-## Repositories
+## Modules
 
-The workspace contains three sibling Git repositories:
+The single Git repository contains three modules:
 
-| Repository | Responsibility |
+| Module | Responsibility |
 | --- | --- |
 | `sgl-products` | Owns the catalog, the `CatalogItem` entity interface, and its physical and digital implementations. |
 | `sgl-pricing` | Extends catalog items with prices, quotes, and category-derived labels. |

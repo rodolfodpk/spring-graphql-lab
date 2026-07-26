@@ -1,0 +1,49 @@
+name: Java CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+          cache-dependency-path: |
+            sgl-local/pom.xml
+            sgl-pricing/pom.xml
+            sgl-products/pom.xml
+
+      - name: Verify products
+        working-directory: sgl-products
+        run: ./mvnw --batch-mode --no-transfer-progress verify
+
+      - name: Verify pricing
+        working-directory: sgl-pricing
+        run: ./mvnw --batch-mode --no-transfer-progress verify
+
+      - name: Test local orchestration
+        working-directory: sgl-local
+        run: ./mvnw --batch-mode --no-transfer-progress test
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v5
+        with:
+          files: sgl-products/target/site/jacoco/jacoco.xml,sgl-pricing/target/site/jacoco/jacoco.xml
+          fail_ci_if_error: true
+          use_oidc: true
