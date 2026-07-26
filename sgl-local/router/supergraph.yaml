@@ -1,0 +1,10 @@
+federation_version: =2.8.0
+subgraphs:
+  products:
+    routing_url: http://products:8080/graphql
+    schema:
+      file: /work/schemas/products.graphql
+  pricing:
+    routing_url: http://pricing:8080/graphql
+    schema:
+      file: /work/schemas/pricing.graphql

@@ -1,0 +1,32 @@
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.8",
+        import: ["@key", "@interfaceObject", "@external", "@requires"])
+
+scalar Decimal
+
+enum CatalogCategory {
+  PHYSICAL
+  DIGITAL
+}
+
+input QuoteInput {
+  quantity: Int!
+}
+
+type CatalogItem @key(fields: "id") @interfaceObject {
+  id: ID!
+  category: CatalogCategory! @external
+  price: Decimal!
+  quote(input: QuoteInput!): Quote!
+  priceLabel: String! @requires(fields: "category")
+}
+
+type Quote {
+  unitPrice: Decimal!
+  quantity: Int!
+  subtotal: Decimal!
+}
+
+type Query {
+  pricingHealth: String!
+}

@@ -1,0 +1,131 @@
+schema
+  @link(url: "https://specs.apollo.dev/link/v1.0")
+  @link(url: "https://specs.apollo.dev/join/v0.5", for: EXECUTION)
+{
+  query: Query
+}
+
+directive @join__directive(graphs: [join__Graph!], name: String!, args: join__DirectiveArguments) repeatable on SCHEMA | OBJECT | INTERFACE | FIELD_DEFINITION
+
+directive @join__enumValue(graph: join__Graph!) repeatable on ENUM_VALUE
+
+directive @join__field(graph: join__Graph, requires: join__FieldSet, provides: join__FieldSet, type: String, external: Boolean, override: String, usedOverridden: Boolean, overrideLabel: String, contextArguments: [join__ContextArgument!]) repeatable on FIELD_DEFINITION | INPUT_FIELD_DEFINITION
+
+directive @join__graph(name: String!, url: String!) on ENUM_VALUE
+
+directive @join__implements(graph: join__Graph!, interface: String!) repeatable on OBJECT | INTERFACE
+
+directive @join__type(graph: join__Graph!, key: join__FieldSet, extension: Boolean! = false, resolvable: Boolean! = true, isInterfaceObject: Boolean! = false) repeatable on OBJECT | INTERFACE | UNION | ENUM | INPUT_OBJECT | SCALAR
+
+directive @join__unionMember(graph: join__Graph!, member: String!) repeatable on UNION
+
+directive @link(url: String, as: String, for: link__Purpose, import: [link__Import]) repeatable on SCHEMA
+
+enum CatalogCategory
+  @join__type(graph: PRICING)
+  @join__type(graph: PRODUCTS)
+{
+  DIGITAL @join__enumValue(graph: PRICING) @join__enumValue(graph: PRODUCTS)
+  PHYSICAL @join__enumValue(graph: PRICING) @join__enumValue(graph: PRODUCTS)
+}
+
+interface CatalogItem
+  @join__type(graph: PRICING, key: "id", resolvable: true, isInterfaceObject: true)
+  @join__type(graph: PRODUCTS, key: "id", resolvable: true)
+{
+  category: CatalogCategory! @join__field(graph: PRICING, external: true) @join__field(graph: PRODUCTS)
+  id: ID!
+  price: Decimal! @join__field(graph: PRICING)
+  priceLabel: String! @join__field(graph: PRICING, requires: "category")
+  quote(input: QuoteInput!): Quote! @join__field(graph: PRICING)
+  description: String @join__field(graph: PRODUCTS)
+  name: String! @join__field(graph: PRODUCTS)
+}
+
+"""Exact decimal serialized as a plain JSON string"""
+scalar Decimal
+  @join__type(graph: PRICING)
+
+type DigitalProduct implements CatalogItem
+  @join__implements(graph: PRODUCTS, interface: "CatalogItem")
+  @join__type(graph: PRODUCTS, key: "id", resolvable: true)
+{
+  category: CatalogCategory!
+  description: String
+  downloadFormat: String!
+  id: ID!
+  name: String!
+  price: Decimal! @join__field
+  priceLabel: String! @join__field
+  quote(input: QuoteInput!): Quote! @join__field
+}
+
+input join__ContextArgument {
+  name: String!
+  type: String!
+  context: String!
+  selection: join__FieldValue!
+}
+
+scalar join__DirectiveArguments
+
+scalar join__FieldSet
+
+scalar join__FieldValue
+
+enum join__Graph {
+  PRICING @join__graph(name: "pricing", url: "http://pricing:8080/graphql")
+  PRODUCTS @join__graph(name: "products", url: "http://products:8080/graphql")
+}
+
+scalar link__Import
+
+enum link__Purpose {
+  """
+  `SECURITY` features provide metadata necessary to securely resolve fields.
+  """
+  SECURITY
+
+  """
+  `EXECUTION` features provide metadata necessary for operation execution.
+  """
+  EXECUTION
+}
+
+type Product implements CatalogItem
+  @join__implements(graph: PRODUCTS, interface: "CatalogItem")
+  @join__type(graph: PRODUCTS, key: "id", resolvable: true)
+{
+  category: CatalogCategory!
+  description: String
+  id: ID!
+  name: String!
+  weightGrams: Int!
+  price: Decimal! @join__field
+  priceLabel: String! @join__field
+  quote(input: QuoteInput!): Quote! @join__field
+}
+
+type Query
+  @join__type(graph: PRICING)
+  @join__type(graph: PRODUCTS)
+{
+  pricingHealth: String! @join__field(graph: PRICING)
+  catalog: [CatalogItem!]! @join__field(graph: PRODUCTS)
+  product(id: ID!): Product @join__field(graph: PRODUCTS)
+  products: [Product!]! @join__field(graph: PRODUCTS)
+}
+
+type Quote
+  @join__type(graph: PRICING)
+{
+  quantity: Int!
+  subtotal: Decimal!
+  unitPrice: Decimal!
+}
+
+input QuoteInput
+  @join__type(graph: PRICING)
+{
+  quantity: Int!
+}

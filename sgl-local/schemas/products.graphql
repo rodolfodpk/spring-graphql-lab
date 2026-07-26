@@ -1,0 +1,96 @@
+schema @link(import : ["@key"], url : "https://specs.apollo.dev/federation/v2.8"){
+  query: Query
+}
+
+directive @federation__authenticated on SCALAR | OBJECT | FIELD_DEFINITION | INTERFACE | ENUM
+
+directive @federation__composeDirective(name: String!) repeatable on SCHEMA
+
+directive @federation__context(name: String!) repeatable on OBJECT | INTERFACE | UNION
+
+directive @federation__extends on OBJECT | INTERFACE
+
+directive @federation__external on OBJECT | FIELD_DEFINITION
+
+directive @federation__fromContext(field: federation__ContextFieldValue) on ARGUMENT_DEFINITION
+
+directive @federation__interfaceObject on OBJECT
+
+directive @federation__override(from: String!, label: String) on FIELD_DEFINITION
+
+directive @federation__policy(policies: [[federation__Policy!]!]!) on SCALAR | OBJECT | FIELD_DEFINITION | INTERFACE | ENUM
+
+directive @federation__provides(fields: federation__FieldSet!) on FIELD_DEFINITION
+
+directive @federation__requires(fields: federation__FieldSet!) on FIELD_DEFINITION
+
+directive @federation__requiresScopes(scopes: [[federation__Scope!]!]!) on SCALAR | OBJECT | FIELD_DEFINITION | INTERFACE | ENUM
+
+directive @federation__shareable repeatable on OBJECT | FIELD_DEFINITION
+
+directive @inaccessible on SCALAR | OBJECT | FIELD_DEFINITION | ARGUMENT_DEFINITION | INTERFACE | UNION | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION
+
+directive @key(fields: federation__FieldSet!, resolvable: Boolean = true) repeatable on OBJECT | INTERFACE
+
+directive @link(as: String, for: link__Purpose, import: [link__Import], url: String!) repeatable on SCHEMA
+
+directive @tag(name: String!) repeatable on SCALAR | OBJECT | FIELD_DEFINITION | ARGUMENT_DEFINITION | INTERFACE | UNION | ENUM | ENUM_VALUE | INPUT_OBJECT | INPUT_FIELD_DEFINITION
+
+interface CatalogItem @key(fields : "id", resolvable : true) {
+  category: CatalogCategory!
+  description: String
+  id: ID!
+  name: String!
+}
+
+union _Entity = DigitalProduct | Product
+
+type DigitalProduct implements CatalogItem @key(fields : "id", resolvable : true) {
+  category: CatalogCategory!
+  description: String
+  downloadFormat: String!
+  id: ID!
+  name: String!
+}
+
+type Product implements CatalogItem @key(fields : "id", resolvable : true) {
+  category: CatalogCategory!
+  description: String
+  id: ID!
+  name: String!
+  weightGrams: Int!
+}
+
+type Query {
+  _entities(representations: [_Any!]!): [_Entity]!
+  _service: _Service!
+  catalog: [CatalogItem!]!
+  product(id: ID!): Product
+  products: [Product!]!
+}
+
+type _Service {
+  sdl: String!
+}
+
+enum CatalogCategory {
+  DIGITAL
+  PHYSICAL
+}
+
+enum link__Purpose {
+  EXECUTION
+  SECURITY
+}
+
+scalar _Any
+
+scalar federation__ContextFieldValue
+
+scalar federation__FieldSet
+
+scalar federation__Policy
+
+scalar federation__Scope
+
+scalar link__Import

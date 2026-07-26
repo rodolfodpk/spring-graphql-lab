@@ -1,0 +1,18 @@
+supergraph:
+  listen: 0.0.0.0:4000
+  path: /
+  introspection: true
+
+health_check:
+  enabled: true
+  listen: 0.0.0.0:8088
+
+sandbox:
+  enabled: true
+
+homepage:
+  enabled: false
+
+# Local tutorial only. Production deployments should normally retain redaction.
+include_subgraph_errors:
+  all: true
