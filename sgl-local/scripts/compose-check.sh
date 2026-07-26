@@ -3,6 +3,7 @@ set -eu
 
 mkdir -p .tmp
 scratch=$(mktemp -d .tmp/check.XXXXXX)
+chmod 755 "$scratch"
 trap 'rm -rf "$scratch"' EXIT HUP INT TERM
 
 scripts/export-subgraphs.sh "$scratch/schemas"
