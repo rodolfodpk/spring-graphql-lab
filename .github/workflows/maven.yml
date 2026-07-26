@@ -12,6 +12,7 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -28,17 +29,26 @@ jobs:
             sgl-pricing/pom.xml
             sgl-products/pom.xml
 
-      - name: Verify products
-        working-directory: sgl-products
-        run: ./mvnw --batch-mode --no-transfer-progress verify
-
-      - name: Verify pricing
-        working-directory: sgl-pricing
-        run: ./mvnw --batch-mode --no-transfer-progress verify
-
-      - name: Test local orchestration
+      - name: Test subgraphs and local project
         working-directory: sgl-local
-        run: ./mvnw --batch-mode --no-transfer-progress test
+        run: make test
+
+      - name: Start federated stack
+        working-directory: sgl-local
+        run: make up
+
+      - name: Run smoke tests
+        working-directory: sgl-local
+        run: make smoke
+
+      - name: Run federated E2E tests
+        working-directory: sgl-local
+        run: make e2e
+
+      - name: Stop federated stack
+        if: always()
+        working-directory: sgl-local
+        run: make down
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
