@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   build:
@@ -46,4 +45,4 @@ jobs:
         with:
           files: sgl-products/target/site/jacoco/jacoco.xml,sgl-pricing/target/site/jacoco/jacoco.xml
           fail_ci_if_error: true
-          use_oidc: true
+          token: ${{ secrets.CODECOV_TOKEN }}
