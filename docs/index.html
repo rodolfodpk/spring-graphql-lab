@@ -166,6 +166,17 @@ input QuoteInput {
       <p>Pricing resolves the price field with one bulk lookup for all catalog
         references in an execution. A counting-repository test proves that four
         items result in exactly one repository call.</p>
+      <p>The <code>quote</code> field takes an argument, which
+        <code>@BatchMapping</code> does not support, so it batches through a
+        named DataLoader registered on the
+        <code>BatchLoaderRegistry</code> and returns a
+        <code>CompletableFuture</code>. Its only data dependency is the item id;
+        the quantity is applied afterwards as pure computation. A second
+        counting test drives this through a real GraphQL execution, because a
+        DataLoader only dispatches when the framework runs the query.</p>
+      <p>The two loaders are registered separately, so selecting both
+        <code>price</code> and <code>quote</code> costs two bulk lookups — a
+        constant, not one per item.</p>
     </section>
 
     <section id="defer">

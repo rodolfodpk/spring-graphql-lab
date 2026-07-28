@@ -1,14 +1,18 @@
 package rdpk.pricing;
 
 import java.math.BigDecimal;
+import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 import graphql.GraphQLError;
 import graphql.GraphqlErrorBuilder;
 import graphql.schema.DataFetchingEnvironment;
+import org.dataloader.DataLoader;
 import org.jspecify.annotations.Nullable;
 import org.springframework.graphql.data.federation.EntityMapping;
 import org.springframework.graphql.data.method.annotation.Argument;
@@ -20,6 +24,9 @@ import org.springframework.stereotype.Controller;
 
 @Controller
 public final class PricingController {
+
+    /** Name of the DataLoader registered in {@link FederationConfiguration}. */
+    static final String PRICE_LOADER = "pricesById";
 
     private final PriceRepository repository;
 
@@ -46,17 +53,29 @@ public final class PricingController {
         Set<String> ids = new LinkedHashSet<>();
         items.forEach(item -> ids.add(item.id()));
         Map<String, BigDecimal> prices = repository.findAllByProductId(ids);
-        return items.stream().collect(java.util.stream.Collectors.toMap(
+        return items.stream().collect(Collectors.toMap(
                 item -> item,
                 item -> requiredPrice(item.id(), prices),
                 (left, right) -> left,
-                java.util.LinkedHashMap::new));
+                LinkedHashMap::new));
     }
 
     @SchemaMapping(typeName = "CatalogItem", field = "quote")
-    public Quote quote(CatalogItemRef item, @Argument QuoteInput input) {
-        return Money.quote(requiredPrice(
-                item.id(), repository.findAllByProductId(Set.of(item.id()))), input.quantity());
+    public CompletableFuture<Quote> quote(CatalogItemRef item, @Argument QuoteInput input,
+            DataFetchingEnvironment environment) {
+        // Validate before loading so the exception stays synchronous. Thrown inside the
+        // callback below it would surface wrapped in a CompletionException, which the
+        // PricingException handler would not match.
+        if (input.quantity() < 1) {
+            throw new PricingException("VALIDATION_ERROR", "Quantity must be at least 1");
+        }
+        DataLoader<String, BigDecimal> loader = environment.getDataLoader(PRICE_LOADER);
+        return loader.load(item.id()).thenApply(price -> {
+            if (price == null) {
+                throw new PricingException("PRICE_NOT_FOUND", "Price was not found");
+            }
+            return Money.quote(price, input.quantity());
+        });
     }
 
     @SchemaMapping(typeName = "CatalogItem", field = "priceLabel")

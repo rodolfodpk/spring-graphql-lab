@@ -230,6 +230,27 @@ and invokes the resolver once with the full list. A dedicated test uses a
 counting repository to prove that four items produce exactly one bulk lookup.
 This asserts behavior, rather than merely asserting that the annotation exists.
 
+`quote` cannot use the annotation, because `@BatchMapping` methods do not
+accept field arguments and `quote` takes a `QuoteInput`. Its data dependency is
+still only the item id — the quantity is applied afterwards as pure
+computation — so it batches through a DataLoader registered by name:
+
+```java
+registry.forTypePair(String.class, BigDecimal.class)
+        .withName(PricingController.PRICE_LOADER)
+        .registerMappedBatchLoader((ids, environment) ->
+                Mono.just(repository.findAllByProductId(ids)));
+```
+
+The resolver returns a `CompletableFuture` from `loader.load(item.id())`, and
+Spring dispatches the accumulated keys once per execution. A second counting
+test drives this through a real GraphQL execution, since a DataLoader only
+dispatches when the framework runs the query.
+
+The two mechanisms are registered separately, so a query selecting both `price`
+and `quote` performs two bulk lookups rather than one. That is a constant, not
+a lookup per item, which is the property the N+1 problem is about.
+
 ## Incremental delivery with `@defer`
 
 Apollo Router supports deferring a fragment:
