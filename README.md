@@ -68,9 +68,9 @@ make down
 
 The implementation covers federation entities and representations,
 `@interfaceObject`, `@external`, `@requires`, polymorphic interfaces,
-`@BatchMapping` against N+1 queries, a custom decimal scalar, an enum and input
-object, incremental delivery with `@defer`, stable GraphQL errors, and layered
-JUnit 6 tests.
+field selection at the subgraph boundary, `@BatchMapping` against N+1 queries, a
+custom decimal scalar, an enum and input object, incremental delivery with
+`@defer`, stable GraphQL errors, and layered JUnit 6 tests.
 
 Read [Concepts demonstrated](docs/CONCEPTS.md) for the architecture and the
 purpose of each feature.

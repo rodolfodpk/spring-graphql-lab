@@ -100,6 +100,22 @@ class FederationE2E {
     }
 
     @Test
+    void skipsPricingSubgraphWhenNoPricingFieldIsSelected() throws Exception {
+        runScript("stop");
+        try {
+            String response = rawGraphQl("{ catalog { id name } }");
+            assertAll(
+                    () -> assertFalse(response.contains("\"errors\"")),
+                    () -> assertTrue(response.contains("\"p-100\"")),
+                    () -> assertTrue(response.contains("\"d-400\"")));
+        }
+        finally {
+            runScript("start");
+            waitForPricingHealth();
+        }
+    }
+
+    @Test
     void deliversCommercialDataAsDeferredMultipartPatches() throws Exception {
         String query = """
                 {

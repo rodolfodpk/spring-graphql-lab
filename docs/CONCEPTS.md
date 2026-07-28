@@ -187,6 +187,35 @@ decimal places and serialized as JSON strings, preserving values such as
 
 Scalar tests cover literals, variables, serialization, and malformed values.
 
+## Field selection and over-fetching
+
+A GraphQL response contains exactly the fields the client selected. That
+guarantee describes the response payload, not the work the server performed to
+produce it.
+
+Selection reaches a data source only where a resolver boundary exists. The
+clearest case is the subgraph boundary:
+
+```graphql
+query {
+  catalog {
+    id
+    name
+  }
+}
+```
+
+No field in this query belongs to Pricing, so the Router never constructs
+entity representations and never calls Pricing at all. An E2E test stops the
+Pricing container, runs this query, and asserts that it still succeeds without
+errors.
+
+The same rule holds inside a subgraph. `price`, `quote`, and `priceLabel` are
+backed by `@BatchMapping` and `@SchemaMapping` methods, so an unselected one is
+never invoked. Fields such as `name` and `weightGrams` are read by the default
+property fetcher from objects the repository already returned whole; selecting
+fewer of them saves serialization, not repository work.
+
 ## Batching and the N+1 problem
 
 Resolving `price` independently for every catalog item would produce one
@@ -252,6 +281,8 @@ finished.
 
 This milestone does not demonstrate persistence, authentication or
 authorization, subscriptions, WebFlux, telemetry infrastructure, cloud
-deployment, or production scaling. Those concerns would obscure the central
-lesson: how a synchronous Spring GraphQL application participates correctly in
-an Apollo Federation supergraph.
+deployment, or production scaling. The in-memory repositories return whole
+objects; deriving a storage projection from
+`DataFetchingEnvironment.getSelectionSet()` is likewise out of scope. Those
+concerns would obscure the central lesson: how a synchronous Spring GraphQL
+application participates correctly in an Apollo Federation supergraph.
