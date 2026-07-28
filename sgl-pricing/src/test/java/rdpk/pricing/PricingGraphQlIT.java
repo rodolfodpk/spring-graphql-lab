@@ -1,5 +1,8 @@
 package rdpk.pricing;
 
+import java.util.List;
+import java.util.Map;
+
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.graphql.test.autoconfigure.tester.AutoConfigureGraphQlTester;
@@ -22,9 +25,9 @@ class PricingGraphQlIT {
                   }
                 }
                 """)
-                .variable("representations", java.util.List.of(
-                        java.util.Map.of("__typename", "CatalogItem", "id", "p-100", "category", "PHYSICAL"),
-                        java.util.Map.of("__typename", "CatalogItem", "id", "d-400", "category", "DIGITAL")))
+                .variable("representations", List.of(
+                        Map.of("__typename", "CatalogItem", "id", "p-100", "category", "PHYSICAL"),
+                        Map.of("__typename", "CatalogItem", "id", "d-400", "category", "DIGITAL")))
                 .execute()
                 .path("_entities[0].price").entity(String.class).isEqualTo("99.90")
                 .path("_entities[0].priceLabel").entity(String.class).isEqualTo("Physical price")
@@ -43,8 +46,8 @@ class PricingGraphQlIT {
                   }
                 }
                 """)
-                .variable("representations", java.util.List.of(
-                        java.util.Map.of("__typename", "CatalogItem", "id", "p-100")))
+                .variable("representations", List.of(
+                        Map.of("__typename", "CatalogItem", "id", "p-100")))
                 .execute()
                 .path("_entities[0].quote.unitPrice").entity(String.class).isEqualTo("99.90")
                 .path("_entities[0].quote.quantity").entity(Integer.class).isEqualTo(2)
@@ -60,8 +63,8 @@ class PricingGraphQlIT {
                   }
                 }
                 """)
-                .variable("representations", java.util.List.of(
-                        java.util.Map.of("__typename", "CatalogItem", "id", "p-100")))
+                .variable("representations", List.of(
+                        Map.of("__typename", "CatalogItem", "id", "p-100")))
                 .execute()
                 .errors()
                 .satisfy(errors -> org.junit.jupiter.api.Assertions.assertEquals(
@@ -77,8 +80,8 @@ class PricingGraphQlIT {
                   }
                 }
                 """)
-                .variable("representations", java.util.List.of(
-                        java.util.Map.of("__typename", "CatalogItem", "id", "p-100", "category", "UNKNOWN")))
+                .variable("representations", List.of(
+                        Map.of("__typename", "CatalogItem", "id", "p-100", "category", "UNKNOWN")))
                 .execute()
                 .errors()
                 .satisfy(errors -> org.junit.jupiter.api.Assertions.assertEquals(
@@ -94,8 +97,8 @@ class PricingGraphQlIT {
                   }
                 }
                 """)
-                .variable("representations", java.util.List.of(
-                        java.util.Map.of("__typename", "CatalogItem", "id", "p-100")))
+                .variable("representations", List.of(
+                        Map.of("__typename", "CatalogItem", "id", "p-100")))
                 .execute()
                 .errors()
                 .satisfy(errors -> org.junit.jupiter.api.Assertions.assertEquals(
@@ -111,8 +114,8 @@ class PricingGraphQlIT {
                   }
                 }
                 """)
-                .variable("representations", java.util.List.of(
-                        java.util.Map.of("__typename", "CatalogItem", "id", "p-100")))
+                .variable("representations", List.of(
+                        Map.of("__typename", "CatalogItem", "id", "p-100")))
                 .execute()
                 .errors()
                 .satisfy(errors -> org.junit.jupiter.api.Assertions.assertFalse(errors.isEmpty()));
@@ -127,8 +130,8 @@ class PricingGraphQlIT {
                   }
                 }
                 """)
-                .variable("representations", java.util.List.of(
-                        java.util.Map.of("__typename", "CatalogItem", "id", "p-100")))
+                .variable("representations", List.of(
+                        Map.of("__typename", "CatalogItem", "id", "p-100")))
                 .execute()
                 .errors()
                 .satisfy(errors -> org.junit.jupiter.api.Assertions.assertFalse(errors.isEmpty()));

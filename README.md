@@ -73,7 +73,8 @@ custom decimal scalar, an enum and input object, incremental delivery with
 `@defer`, stable GraphQL errors, and layered JUnit 6 tests.
 
 Read [Concepts demonstrated](docs/CONCEPTS.md) for the architecture and the
-purpose of each feature.
+purpose of each feature, or browse the same material as a
+[rendered page](docs/index.html).
 
 ## Boundaries
 

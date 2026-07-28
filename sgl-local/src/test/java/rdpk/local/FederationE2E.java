@@ -10,6 +10,9 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.time.Duration;
+import java.util.List;
+import java.util.Map;
+import java.util.regex.Pattern;
 
 import org.junit.jupiter.api.Test;
 import org.springframework.web.client.RestClient;
@@ -77,7 +80,7 @@ class FederationE2E {
     @Test
     void exposesOnlyHealthFromBothSubgraphs() throws Exception {
         HttpClient http = HttpClient.newHttpClient();
-        for (int port : java.util.List.of(8081, 8082)) {
+        for (int port : List.of(8081, 8082)) {
             assertEquals(200, status(http, port, "/actuator/health"));
             assertEquals(404, status(http, port, "/actuator/env"));
             assertEquals(404, status(http, port, "/actuator"));
@@ -138,7 +141,7 @@ class FederationE2E {
         String contentType = response.headers().firstValue("Content-Type").orElseThrow();
         String boundary = contentType.replaceAll("(?i).*boundary=\"?([^\";]+)\"?.*", "$1");
         String body = response.body();
-        String[] parts = body.split("--" + java.util.regex.Pattern.quote(boundary));
+        String[] parts = body.split("--" + Pattern.quote(boundary));
 
         assertAll(
                 () -> assertTrue(contentType.toLowerCase().startsWith("multipart/mixed")),
@@ -161,7 +164,7 @@ class FederationE2E {
 
     private String graphQl(String query) {
         return client.post()
-                .body(java.util.Map.of("query", query))
+                .body(Map.of("query", query))
                 .retrieve()
                 .body(String.class);
     }
