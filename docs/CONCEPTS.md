@@ -187,6 +187,35 @@ decimal places and serialized as JSON strings, preserving values such as
 
 Scalar tests cover literals, variables, serialization, and malformed values.
 
+## Field selection and over-fetching
+
+A GraphQL response contains exactly the fields the client selected. That
+guarantee describes the response payload, not the work the server performed to
+produce it.
+
+Selection reaches a data source only where a resolver boundary exists. The
+clearest case is the subgraph boundary:
+
+```graphql
+query {
+  catalog {
+    id
+    name
+  }
+}
+```
+
+No field in this query belongs to Pricing, so the Router never constructs
+entity representations and never calls Pricing at all. An E2E test stops the
+Pricing container, runs this query, and asserts that it still succeeds without
+errors.
+
+The same rule holds inside a subgraph. `price`, `quote`, and `priceLabel` are
+backed by `@BatchMapping` and `@SchemaMapping` methods, so an unselected one is
+never invoked. Fields such as `name` and `weightGrams` are read by the default
+property fetcher from objects the repository already returned whole; selecting
+fewer of them saves serialization, not repository work.
+
 ## Batching and the N+1 problem
 
 Resolving `price` independently for every catalog item would produce one
@@ -200,6 +229,27 @@ Spring collects all catalog references requested during one GraphQL execution
 and invokes the resolver once with the full list. A dedicated test uses a
 counting repository to prove that four items produce exactly one bulk lookup.
 This asserts behavior, rather than merely asserting that the annotation exists.
+
+`quote` cannot use the annotation, because `@BatchMapping` methods do not
+accept field arguments and `quote` takes a `QuoteInput`. Its data dependency is
+still only the item id — the quantity is applied afterwards as pure
+computation — so it batches through a DataLoader registered by name:
+
+```java
+registry.forTypePair(String.class, BigDecimal.class)
+        .withName(PricingController.PRICE_LOADER)
+        .registerMappedBatchLoader((ids, environment) ->
+                Mono.just(repository.findAllByProductId(ids)));
+```
+
+The resolver returns a `CompletableFuture` from `loader.load(item.id())`, and
+Spring dispatches the accumulated keys once per execution. A second counting
+test drives this through a real GraphQL execution, since a DataLoader only
+dispatches when the framework runs the query.
+
+The two mechanisms are registered separately, so a query selecting both `price`
+and `quote` performs two bulk lookups rather than one. That is a constant, not
+a lookup per item, which is the property the N+1 problem is about.
 
 ## Incremental delivery with `@defer`
 
@@ -252,6 +302,8 @@ finished.
 
 This milestone does not demonstrate persistence, authentication or
 authorization, subscriptions, WebFlux, telemetry infrastructure, cloud
-deployment, or production scaling. Those concerns would obscure the central
-lesson: how a synchronous Spring GraphQL application participates correctly in
-an Apollo Federation supergraph.
+deployment, or production scaling. The in-memory repositories return whole
+objects; deriving a storage projection from
+`DataFetchingEnvironment.getSelectionSet()` is likewise out of scope. Those
+concerns would obscure the central lesson: how a synchronous Spring GraphQL
+application participates correctly in an Apollo Federation supergraph.

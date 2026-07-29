@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
+import java.util.List;
+
 import org.junit.jupiter.api.Test;
 
 class CatalogRepositoryTest {
@@ -16,10 +18,10 @@ class CatalogRepositoryTest {
 
         assertAll(
                 () -> assertEquals(
-                        java.util.List.of("p-100", "p-200", "p-300", "d-400"),
+                        List.of("p-100", "p-200", "p-300", "d-400"),
                         items.stream().map(CatalogItem::id).toList()),
                 () -> assertEquals(
-                        java.util.List.of(
+                        List.of(
                                 CatalogCategory.PHYSICAL,
                                 CatalogCategory.PHYSICAL,
                                 CatalogCategory.PHYSICAL,

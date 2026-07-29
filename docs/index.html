@@ -35,6 +35,7 @@
       <li><a href="#polymorphism">Polymorphism</a></li>
       <li><a href="#requires">External fields</a></li>
       <li><a href="#types">Enum, input, and scalar</a></li>
+      <li><a href="#selection">Field selection</a></li>
       <li><a href="#batching">Batching</a></li>
       <li><a href="#defer">Incremental delivery</a></li>
       <li><a href="#testing">Testing</a></li>
@@ -140,11 +141,42 @@ input QuoteInput {
         <code>"99.90"</code>.</p>
     </section>
 
+    <section id="selection">
+      <h2>Field selection and over-fetching</h2>
+      <p>A response carries exactly the fields the client selected. That
+        guarantee describes the payload, not the work the server performed to
+        produce it. Selection reaches a data source only where a resolver
+        boundary exists.</p>
+      <pre><code>query {
+  catalog {
+    id
+    name
+  }
+}</code></pre>
+      <p>No field here belongs to Pricing, so the Router never calls the
+        Pricing subgraph. An E2E test stops Pricing and asserts that this query
+        still succeeds. Inside a subgraph the same rule holds: fields backed by
+        <code>@BatchMapping</code> and <code>@SchemaMapping</code> are skipped
+        when unselected, while plain properties are read from objects the
+        repository already returned whole.</p>
+    </section>
+
     <section id="batching">
       <h2><code>@BatchMapping</code> and N+1</h2>
       <p>Pricing resolves the price field with one bulk lookup for all catalog
         references in an execution. A counting-repository test proves that four
         items result in exactly one repository call.</p>
+      <p>The <code>quote</code> field takes an argument, which
+        <code>@BatchMapping</code> does not support, so it batches through a
+        named DataLoader registered on the
+        <code>BatchLoaderRegistry</code> and returns a
+        <code>CompletableFuture</code>. Its only data dependency is the item id;
+        the quantity is applied afterwards as pure computation. A second
+        counting test drives this through a real GraphQL execution, because a
+        DataLoader only dispatches when the framework runs the query.</p>
+      <p>The two loaders are registered separately, so selecting both
+        <code>price</code> and <code>quote</code> costs two bulk lookups — a
+        constant, not one per item.</p>
     </section>
 
     <section id="defer">
@@ -178,8 +210,10 @@ input QuoteInput {
       <h2>Deliberate boundaries</h2>
       <p class="note">This milestone does not include persistence,
         authentication, WebFlux, observability infrastructure, AWS/CDK, or
-        production hardening. Its focus is correct participation by
-        synchronous Spring GraphQL services in an Apollo supergraph.</p>
+        production hardening. The in-memory repositories return whole objects,
+        so no storage projection is derived from a selection set. Its focus is
+        correct participation by synchronous Spring GraphQL services in an
+        Apollo supergraph.</p>
       <p>See the <a href="../README.md">workspace README</a>,
         <a href="../sgl-local/README.md">local runbook</a>, or the
         <a href="CONCEPTS.md">Markdown concepts guide</a>.</p>
