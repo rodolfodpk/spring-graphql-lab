@@ -15,9 +15,9 @@ The single Git repository contains three modules:
 
 | Module | Responsibility |
 | --- | --- |
-| `products-subgraph` | Owns the catalog, the `CatalogItem` entity interface, and its physical and digital implementations. |
-| `pricing-subgraph` | Extends catalog items with prices, quotes, and category-derived labels. |
-| `supergraph` | Builds the services, composes the supergraph with Rover, runs Apollo Router, and owns E2E tests. |
+| `products-subgraph` | Owns the catalog and the `CatalogItem` entity interface. |
+| `pricing-subgraph` | Adds prices, quotes, and category-derived labels. |
+| `supergraph` | Composes the supergraph, runs Apollo Router, owns the E2E tests. |
 
 The services use Java 21, Spring Boot 4.1, Spring GraphQL, Maven, Docker
 Compose, Apollo Router, and Rover. All business data is immutable and stored in
