@@ -12,9 +12,9 @@
     </parent>
 
     <groupId>rdpk</groupId>
-    <artifactId>sgl-products</artifactId>
+    <artifactId>products-subgraph</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>sgl-products</name>
+    <name>products-subgraph</name>
 
     <properties>
         <java.version>21</java.version>

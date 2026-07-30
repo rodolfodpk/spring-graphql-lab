@@ -1,7 +1,7 @@
-# SGL Local Federation
+# Supergraph
 
-Local Apollo Federation reference implementation with two synchronous Spring
-Boot subgraphs:
+Composes the two subgraphs into one supergraph, runs Apollo Router in front of
+them, and owns the end-to-end tests:
 
 - **Products** owns the catalog and runs on port `8081`.
 - **Pricing** adds commercial fields and runs on port `8082`.
@@ -12,16 +12,16 @@ database or cloud dependency.
 
 ## Repository layout
 
-Keep the three repositories next to each other:
+The three modules live side by side in one repository:
 
 ```text
-sgl/
-├── sgl-products/
-├── sgl-pricing/
-└── sgl-local/
+spring-graphql-lab/
+├── products-subgraph/
+├── pricing-subgraph/
+└── supergraph/
 ```
 
-Run all commands in this README from `sgl-local`.
+Run all commands in this README from `supergraph`.
 
 ## Prerequisites
 
@@ -46,7 +46,7 @@ repositories.
 ## Start everything
 
 ```sh
-cd sgl-local
+cd supergraph
 make up
 ```
 

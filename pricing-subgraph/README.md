@@ -1,4 +1,4 @@
-# SGL Pricing
+# Pricing
 
 Synchronous Spring Boot 4.1 / Spring GraphQL Pricing subgraph.
 

@@ -1,9 +1,9 @@
-name: sgl
+name: spring-graphql-lab
 
 services:
   products:
     build:
-      context: ../sgl-products
+      context: ../products-subgraph
       args:
         BUILD_IMAGE: ${BUILD_IMAGE:-eclipse-temurin:21.0.11_10-jdk-jammy}
         RUNTIME_IMAGE: ${RUNTIME_IMAGE:-eclipse-temurin:21.0.11_10-jre-jammy}
@@ -18,7 +18,7 @@ services:
 
   pricing:
     build:
-      context: ../sgl-pricing
+      context: ../pricing-subgraph
       args:
         BUILD_IMAGE: ${BUILD_IMAGE:-eclipse-temurin:21.0.11_10-jdk-jammy}
         RUNTIME_IMAGE: ${RUNTIME_IMAGE:-eclipse-temurin:21.0.11_10-jre-jammy}
@@ -32,7 +32,7 @@ services:
       start_period: 10s
 
   router:
-    image: sgl-router
+    image: router
     build:
       context: ./router
     command:

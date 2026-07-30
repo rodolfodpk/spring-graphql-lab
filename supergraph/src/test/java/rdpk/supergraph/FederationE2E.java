@@ -1,4 +1,4 @@
-package rdpk.local;
+package rdpk.supergraph;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertFalse;

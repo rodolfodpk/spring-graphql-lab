@@ -25,34 +25,34 @@ jobs:
           java-version: "21"
           cache: maven
           cache-dependency-path: |
-            sgl-local/pom.xml
-            sgl-pricing/pom.xml
-            sgl-products/pom.xml
+            supergraph/pom.xml
+            pricing-subgraph/pom.xml
+            products-subgraph/pom.xml
 
       - name: Test subgraphs and local project
-        working-directory: sgl-local
+        working-directory: supergraph
         run: make test
 
       - name: Start federated stack
-        working-directory: sgl-local
+        working-directory: supergraph
         run: make up
 
       - name: Run smoke tests
-        working-directory: sgl-local
+        working-directory: supergraph
         run: make smoke
 
       - name: Run federated E2E tests
-        working-directory: sgl-local
+        working-directory: supergraph
         run: make e2e
 
       - name: Stop federated stack
         if: always()
-        working-directory: sgl-local
+        working-directory: supergraph
         run: make down
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: sgl-products/target/site/jacoco/jacoco.xml,sgl-pricing/target/site/jacoco/jacoco.xml
+          files: products-subgraph/target/site/jacoco/jacoco.xml,pricing-subgraph/target/site/jacoco/jacoco.xml
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}
