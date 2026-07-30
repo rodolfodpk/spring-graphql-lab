@@ -1,9 +1,10 @@
 # Concepts Demonstrated
 
-SGL is a deliberately small Apollo Federation system. Products owns a
-catalog, Pricing contributes commercial fields, and Apollo Router presents
-both schemas to a client as one graph. Keeping the domain deterministic makes
-the mechanics of federation visible without database or cloud infrastructure.
+Spring GraphQL Lab is a deliberately small Apollo Federation system. Products
+owns a catalog, Pricing contributes commercial fields, and Apollo Router
+presents both schemas to a client as one graph. Keeping the domain
+deterministic makes the mechanics of federation visible without database or
+cloud infrastructure.
 
 ## Schema-first synchronous Spring GraphQL
 

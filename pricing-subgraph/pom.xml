@@ -10,9 +10,9 @@
         <relativePath/>
     </parent>
     <groupId>rdpk</groupId>
-    <artifactId>sgl-pricing</artifactId>
+    <artifactId>pricing-subgraph</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>sgl-pricing</name>
+    <name>pricing-subgraph</name>
     <properties>
         <java.version>21</java.version>
         <junit-jupiter.version>6.1.2</junit-jupiter.version>

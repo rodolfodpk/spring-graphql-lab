@@ -6,8 +6,8 @@ help:
 	@printf '%s\n' 'make test compose up down e2e verify'
 
 test:
-	cd ../sgl-products && ./mvnw verify
-	cd ../sgl-pricing && ./mvnw verify
+	cd ../products-subgraph && ./mvnw verify
+	cd ../pricing-subgraph && ./mvnw verify
 	./mvnw test
 
 build:
@@ -48,6 +48,6 @@ verify:
 	$(MAKE) e2e
 
 clean:
-	cd ../sgl-products && ./mvnw clean
-	cd ../sgl-pricing && ./mvnw clean
+	cd ../products-subgraph && ./mvnw clean
+	cd ../pricing-subgraph && ./mvnw clean
 	./mvnw clean

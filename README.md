@@ -1,13 +1,13 @@
-# SGL
+# Spring GraphQL Lab
 
 [![Java CI](https://github.com/rodolfodpk/spring-graphql-lab/actions/workflows/maven.yml/badge.svg)](https://github.com/rodolfodpk/spring-graphql-lab/actions/workflows/maven.yml)
 [![codecov](https://codecov.io/gh/rodolfodpk/spring-graphql-lab/branch/main/graph/badge.svg)](https://codecov.io/gh/rodolfodpk/spring-graphql-lab)
 [![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 
-SGL is a local reference implementation of Apollo Federation with two
-synchronous Spring Boot GraphQL subgraphs. It demonstrates how independently
-owned schemas compose into one client-facing graph without a database, cloud
-account, or paid Apollo service.
+Spring GraphQL Lab is a local reference implementation of Apollo Federation
+with two synchronous Spring Boot GraphQL subgraphs. It demonstrates how
+independently owned schemas compose into one client-facing graph without a
+database, cloud account, or paid Apollo service.
 
 ## Modules
 
@@ -15,9 +15,9 @@ The single Git repository contains three modules:
 
 | Module | Responsibility |
 | --- | --- |
-| `sgl-products` | Owns the catalog, the `CatalogItem` entity interface, and its physical and digital implementations. |
-| `sgl-pricing` | Extends catalog items with prices, quotes, and category-derived labels. |
-| `sgl-local` | Builds the services, composes the supergraph with Rover, runs Apollo Router, and owns E2E tests. |
+| `products-subgraph` | Owns the catalog, the `CatalogItem` entity interface, and its physical and digital implementations. |
+| `pricing-subgraph` | Extends catalog items with prices, quotes, and category-derived labels. |
+| `supergraph` | Builds the services, composes the supergraph with Rover, runs Apollo Router, and owns E2E tests. |
 
 The services use Java 21, Spring Boot 4.1, Spring GraphQL, Maven, Docker
 Compose, Apollo Router, and Rover. All business data is immutable and stored in
@@ -28,7 +28,7 @@ plain Java collections.
 Prerequisites are Java 21+, Docker Compose v2, Make, and curl.
 
 ```sh
-cd sgl-local
+cd supergraph
 make up
 ```
 
@@ -42,12 +42,12 @@ Use Apollo Sandbox for queries that cross subgraph boundaries. The two
 GraphiQL pages are useful for inspecting and diagnosing an individual
 subgraph.
 
-See the [local runbook](sgl-local/README.md) for manual queries,
+See the [supergraph runbook](supergraph/README.md) for manual queries,
 troubleshooting, schema composition, and all available Make targets.
 
 ## Test
 
-From `sgl-local`:
+From `supergraph`:
 
 ```sh
 make test

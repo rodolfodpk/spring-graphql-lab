@@ -14,6 +14,6 @@ RUN apt-get update \
     && apt-get install --no-install-recommends -y curl \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
-COPY --from=build /workspace/target/sgl-products-0.0.1-SNAPSHOT.jar app.jar
+COPY --from=build /workspace/target/pricing-subgraph-0.0.1-SNAPSHOT.jar app.jar
 EXPOSE 8080
 ENTRYPOINT ["java", "-jar", "/app/app.jar"]
