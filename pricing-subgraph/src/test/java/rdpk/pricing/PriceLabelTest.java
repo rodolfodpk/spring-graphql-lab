@@ -15,6 +15,6 @@ class PriceLabelTest {
             "DIGITAL, Digital price"
     })
     void derivesTotalLabel(CatalogCategory category, String expected) {
-        assertEquals(expected, controller.priceLabel(new CatalogItemRef("p-100", category)));
+        assertEquals(expected, controller.priceLabel(new CatalogItemRef("p-100", category)).block());
     }
 }

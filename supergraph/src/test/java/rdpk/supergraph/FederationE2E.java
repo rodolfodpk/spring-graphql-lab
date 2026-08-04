@@ -162,6 +162,59 @@ class FederationE2E {
                 () -> assertTrue(ordinary.contains("\"Digital price\"")));
     }
 
+    /**
+     * The price subscription is served by the pricing subgraph itself, never through Router:
+     * routing subscriptions requires connecting Router to GraphOS with credentials, and this lab
+     * runs unauthenticated. So this test talks to :8082 directly.
+     */
+    @Test
+    void streamsPriceChangesFromThePricingSubgraphOverSse() throws Exception {
+        String query = """
+                subscription {
+                  priceChanges(productId: "p-100") { productId price sequence }
+                }
+                """;
+        HttpRequest request = HttpRequest.newBuilder(URI.create("http://127.0.0.1:8082/graphql"))
+                .timeout(Duration.ofSeconds(30))
+                .header("Content-Type", "application/json")
+                .header("Accept", "text/event-stream")
+                .POST(HttpRequest.BodyPublishers.ofString(
+                        "{\"query\":" + quoteJson(query) + "}"))
+                .build();
+
+        HttpResponse<String> response = HttpClient.newHttpClient().send(
+                request, HttpResponse.BodyHandlers.ofString());
+
+        // Match on event type rather than counting frames: keep-alive frames may also appear.
+        List<String> payloads = response.body().lines()
+                .filter(line -> line.startsWith("data:"))
+                .map(line -> line.substring("data:".length()).trim())
+                .toList();
+        long nextEvents = response.body().lines().filter(line -> line.equals("event:next")).count();
+        long completeEvents = response.body().lines()
+                .filter(line -> line.equals("event:complete")).count();
+
+        assertAll(
+                () -> assertTrue(response.headers().firstValue("Content-Type").orElseThrow()
+                        .toLowerCase().startsWith("text/event-stream")),
+                () -> assertEquals(5, nextEvents),
+                () -> assertEquals(1, completeEvents),
+                // Sequence 1 is the unchanged seeded price; each later emission adds one delta.
+                () -> assertTrue(payloads.get(0).contains("\"price\":\"99.90\"")),
+                () -> assertTrue(payloads.get(0).contains("\"sequence\":1")),
+                () -> assertTrue(payloads.get(4).contains("\"price\":\"100.30\"")),
+                () -> assertTrue(payloads.get(4).contains("\"sequence\":5")));
+    }
+
+    /** The local-only subscription surface must not have leaked into the composed supergraph. */
+    @Test
+    void keepsTheSubscriptionOutOfTheSupergraph() throws Exception {
+        String response = rawGraphQl("{ __schema { subscriptionType { name } types { name } } }");
+        assertAll(
+                () -> assertTrue(response.contains("\"subscriptionType\":null")),
+                () -> assertFalse(response.contains("\"PriceChange\"")));
+    }
+
     private String graphQl(String query) {
         return client.post()
                 .body(Map.of("query", query))

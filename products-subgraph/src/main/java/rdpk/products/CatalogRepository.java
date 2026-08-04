@@ -3,12 +3,19 @@ package rdpk.products;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
 import org.springframework.stereotype.Repository;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @Repository
 public final class CatalogRepository {
+
+    /**
+     * Catalog order is part of the published contract, so it is stated explicitly rather than
+     * read from the backing map. {@code Map.copyOf} makes no promise about iteration order.
+     */
+    private static final List<String> CATALOG_ORDER = List.of("p-100", "p-200", "p-300", "d-400");
 
     private final Map<String, CatalogItem> items;
 
@@ -25,19 +32,15 @@ public final class CatalogRepository {
         this.items = Map.copyOf(seeded);
     }
 
-    public Optional<CatalogItem> findById(String id) {
-        return Optional.ofNullable(items.get(id));
+    public Mono<CatalogItem> findById(String id) {
+        return Mono.fromSupplier(() -> items.get(id));
     }
 
-    public List<CatalogItem> findAll() {
-        return List.of(
-                items.get("p-100"),
-                items.get("p-200"),
-                items.get("p-300"),
-                items.get("d-400"));
+    public Flux<CatalogItem> findAll() {
+        return Flux.fromIterable(CATALOG_ORDER).map(items::get);
     }
 
-    public List<Product> findProducts() {
-        return findAll().stream().filter(Product.class::isInstance).map(Product.class::cast).toList();
+    public Flux<Product> findProducts() {
+        return findAll().filter(Product.class::isInstance).cast(Product.class);
     }
 }

@@ -6,16 +6,48 @@ presents both schemas to a client as one graph. Keeping the domain
 deterministic makes the mechanics of federation visible without database or
 cloud infrastructure.
 
-## Schema-first synchronous Spring GraphQL
+## Schema-first reactive Spring GraphQL
 
 Both subgraphs define their public contracts in GraphQL SDL and implement them
-with Spring MVC-style annotated controllers. They use ordinary synchronous
-Java methods—there is no WebFlux or Reactor layer.
+with annotated controllers running on Spring WebFlux and Reactor Netty.
+Repositories and controllers are written in terms of `Mono` and `Flux`.
 
 Spring GraphQL loads each `schema.graphqls`, maps `@QueryMapping`,
-`@SchemaMapping`, and `@BatchMapping` methods to fields, and exposes the
-standard `/graphql` endpoint. GraphiQL is enabled locally for inspecting each
-subgraph.
+`@SchemaMapping`, `@BatchMapping`, and `@SubscriptionMapping` methods to
+fields, and exposes the standard `/graphql` endpoint. GraphiQL is enabled
+locally for inspecting each subgraph.
+
+### What reactive buys here, and what it does not
+
+Nothing in this lab blocks. There is no database, and no subgraph makes an
+outbound HTTP call—Router does all cross-subgraph fan-out. So the reactive
+rewrite is a demonstration of the *programming model*, not a throughput
+improvement. Claiming otherwise would be dishonest: with no I/O to overlap,
+Netty and Tomcat would serve this workload equally well.
+
+What it does buy is a codebase shaped the way a reactive service is shaped, and
+one capability that follows naturally: `Subscription.priceChanges` returns a
+`Flux` straight from the controller.
+
+Two conventions are worth naming, because they look inconsistent otherwise:
+
+- **Every repository method returns `Mono` or `Flux`, and reports a missing row
+  as an empty `Mono` rather than an exception.** `PriceRepository.containsProductId`
+  returning `Mono<Boolean>` is pure ceremony over a `HashMap`. It is written that
+  way because the repository interface is the seam where a real datastore would
+  sit, and a method returning a bare `boolean` today cannot become an R2DBC
+  lookup tomorrow without changing every caller. Turning absence into a domain
+  error stays the caller's decision.
+- **Controllers may still throw synchronously.** `parseCategory` and the `quote`
+  quantity check throw rather than returning `Mono.error`. Reactor converts a
+  throw inside an operator into an `onError` signal, so `@GraphQlExceptionHandler`
+  matches either way, and the check reads better where it is. Wrapping the body
+  in `Mono.defer` would be equally valid; the point is that a synchronous throw
+  in a controller is a deliberate choice here, not an oversight.
+
+For the same reason, `pricingHealth()` returning `Mono<String>` is uniformity,
+not necessity. Do not read it as a rule that every trivial computation belongs
+in a `Mono`.
 
 ## Subgraphs, supergraph, Router, and Rover
 
@@ -274,6 +306,71 @@ contain commercial data and their paths. The E2E test parses the dynamic MIME
 boundary and verifies the initial result, labeled patches, and final
 `hasNext: false`.
 
+## A subscription that stops at the subgraph
+
+`pricing-subgraph` serves a subscription that streams a product's price:
+
+```graphql
+subscription {
+  priceChanges(productId: "p-100") { productId price sequence }
+}
+```
+
+The stream is finite and fully determined, so tests can assert it value by
+value. Sequence 1 carries the unchanged seeded price and each later emission
+adds `0.10`, five emissions in all, 200 ms apart:
+
+| sequence | price |
+| --- | --- |
+| 1 | `99.90` |
+| 2 | `100.00` |
+| 3 | `100.10` |
+| 4 | `100.20` |
+| 5 | `100.30` |
+
+An unknown `productId` fails with `PRICE_NOT_FOUND` before the stream starts,
+because the controller reads the seeded price and validates in a single lookup
+rather than checking existence and then reading.
+
+Both transports work against `http://localhost:8082/graphql`. WebSocket needs
+`spring.graphql.websocket.path`; SSE needs no configuration at all:
+
+```sh
+curl -N -X POST http://127.0.0.1:8082/graphql \
+  -H 'Content-Type: application/json' \
+  -H 'Accept: text/event-stream' \
+  -d '{"query":"subscription { priceChanges(productId: \"p-100\") { price sequence } }"}'
+```
+
+This is worth stating plainly, because it is easy to oversell: **WebSocket
+subscriptions are not something WebFlux unlocks.** Spring Boot autoconfigures
+GraphQL over WebSocket on the servlet stack too, and SSE rides the ordinary
+GraphQL HTTP endpoint either way. What the reactive stack contributes is that
+the handler returns a `Flux` natively and no extra servlet WebSocket starter is
+needed.
+
+### Why it is stripped from the supergraph
+
+Routing subscriptions through Apollo Router requires connecting the Router to
+GraphOS with credentials. Subscriptions are available on every GraphOS plan
+including the free one, so this is an account-and-credentials constraint rather
+than a paid-tier one—but this lab's premise is that it runs with no Apollo
+account, and CI composes unauthenticated.
+
+So `Subscription` and `PriceChange` are removed from the SDL handed to
+composition by `scripts/strip-local-subscription.sh`. Three constructs have to
+go, not two: dropping only the two type definitions would leave
+`subscription: Subscription` dangling in the schema root block, and composition
+would fail. The script matches definitions by name and consumes them by brace
+depth rather than by blank-line paragraphs, so a change in how graphql-java
+lays out SDL cannot silently defeat it.
+
+The guard runs from both sides. `export-subgraphs.sh` asserts the live
+`_service { sdl }` *does* contain all three constructs before filtering, and
+the filter asserts the published schema contains none of them afterwards.
+Without the first assertion, a subscription that quietly stopped being
+published would look exactly like a filter that worked.
+
 ## Errors and local diagnostics
 
 Domain failures use stable extension codes such as `PRODUCT_NOT_FOUND`,
@@ -289,11 +386,17 @@ GraphiQL pages are intentionally local diagnostic tools.
 The example uses JUnit 6 at several levels:
 
 - Unit tests cover seeded values, money rules, scalar coercion, label mapping,
-  and batching call counts.
+  and batching call counts. Reactive returns are asserted with `StepVerifier`.
 - Spring GraphQL integration tests load each real schema and exercise mappings,
-  entity representations, validation, and Federation SDL.
+  entity representations, validation, Federation SDL, and the subscription
+  through `ExecutionGraphQlServiceTester`.
+- One WebSocket integration test runs against a real Reactor Netty server with
+  `WebSocketGraphQlTester`, which is the authoritative proof that the reactive
+  transport works end to end rather than only in process.
 - E2E tests call Apollo Router and cover cross-subgraph queries, polymorphism,
-  `@requires`, quotes, errors, health exposure, outage recovery, and `@defer`.
+  `@requires`, quotes, errors, health exposure, outage recovery, and `@defer`;
+  plus SSE against `pricing-subgraph` directly, and an assertion that the
+  supergraph exposes no `Subscription`.
 - Schema checks export runtime SDL, compose twice, and detect stale artifacts.
 
 `make verify` executes the complete path and removes the local containers when
@@ -302,9 +405,11 @@ finished.
 ## Deliberate boundaries
 
 This milestone does not demonstrate persistence, authentication or
-authorization, subscriptions, WebFlux, telemetry infrastructure, cloud
-deployment, or production scaling. The in-memory repositories return whole
-objects; deriving a storage projection from
-`DataFetchingEnvironment.getSelectionSet()` is likewise out of scope. Those
-concerns would obscure the central lesson: how a synchronous Spring GraphQL
+authorization, telemetry infrastructure, cloud deployment, or production
+scaling. The in-memory repositories return whole objects; deriving a storage
+projection from `DataFetchingEnvironment.getSelectionSet()` is likewise out of
+scope. Those concerns would obscure the central lesson: how a Spring GraphQL
 application participates correctly in an Apollo Federation supergraph.
+
+Subscriptions are demonstrated, but only up to the subgraph boundary. See
+[A subscription that stops at the subgraph](#a-subscription-that-stops-at-the-subgraph).

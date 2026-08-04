@@ -5,7 +5,7 @@
 [![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 
 Spring GraphQL Lab is a local reference implementation of Apollo Federation
-with two synchronous Spring Boot GraphQL subgraphs. It demonstrates how
+with two reactive Spring Boot GraphQL subgraphs. It demonstrates how
 independently owned schemas compose into one client-facing graph without a
 database, cloud account, or paid Apollo service.
 
@@ -19,9 +19,10 @@ The single Git repository contains three modules:
 | `pricing-subgraph` | Adds prices, quotes, and category-derived labels. |
 | `supergraph` | Composes the supergraph, runs Apollo Router, owns the E2E tests. |
 
-The services use Java 21, Spring Boot 4.1, Spring GraphQL, Maven, Docker
-Compose, Apollo Router, and Rover. All business data is immutable and stored in
-plain Java collections.
+The services use Java 21, Spring Boot 4.1, Spring GraphQL on WebFlux, Project
+Reactor, Maven, Docker Compose, Apollo Router, and Rover. Both subgraphs run on
+Reactor Netty; repositories and controllers are written in terms of `Mono` and
+`Flux`. All business data is immutable and stored in plain Java collections.
 
 ## Start
 
@@ -70,7 +71,12 @@ The implementation covers federation entities and representations,
 `@interfaceObject`, `@external`, `@requires`, polymorphic interfaces,
 field selection at the subgraph boundary, `@BatchMapping` against N+1 queries, a
 custom decimal scalar, an enum and input object, incremental delivery with
-`@defer`, stable GraphQL errors, and layered JUnit 6 tests.
+`@defer`, a subscription delivered over WebSocket and SSE, stable GraphQL
+errors, and layered JUnit 6 tests.
+
+The subscription is served by `pricing-subgraph` directly rather than through
+Router, and is deliberately excluded from the composed supergraph — see
+[Boundaries](#boundaries).
 
 Read [Concepts demonstrated](docs/CONCEPTS.md) for the architecture and the
 purpose of each feature, or browse the same material as a
@@ -79,6 +85,17 @@ purpose of each feature, or browse the same material as a
 ## Boundaries
 
 This milestone is intentionally local and educational. It does not include a
-database, authentication, WebFlux, an observability platform, AWS/CDK, or
-production deployment hardening. Apollo Router and Rover run locally from
-pinned free container images; no Apollo account or GraphOS key is required.
+database, authentication, an observability platform, AWS/CDK, or production
+deployment hardening. Apollo Router and Rover run locally from pinned free
+container images; no Apollo account or GraphOS key is required.
+
+That last point is why `Subscription.priceChanges` is served only by
+`pricing-subgraph` on port 8082 and stripped from the SDL handed to composition:
+routing subscriptions through Apollo Router requires connecting it to GraphOS
+with credentials. Subscriptions are available on every GraphOS plan including
+the free one, so this is an account-and-credentials constraint rather than a
+paid-tier one — but it is still a constraint this lab declines to take on.
+
+The reactive stack here is a demonstration of the programming model, not a
+throughput claim: there is no database and no outbound HTTP, so no thread is
+ever blocked and none of this makes the lab faster.

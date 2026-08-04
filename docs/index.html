@@ -22,7 +22,7 @@
 <body>
   <header>
     <h1>Spring GraphQL Lab</h1>
-    <p>A local Apollo Federation reference implementation with synchronous
+    <p>A local Apollo Federation reference implementation with reactive
       Spring Boot GraphQL subgraphs.</p>
   </header>
 
@@ -38,6 +38,7 @@
       <li><a href="#selection">Field selection</a></li>
       <li><a href="#batching">Batching</a></li>
       <li><a href="#defer">Incremental delivery</a></li>
+      <li><a href="#subscription">Subscriptions</a></li>
       <li><a href="#testing">Testing</a></li>
       <li><a href="#boundaries">Boundaries</a></li>
     </ul>
@@ -47,8 +48,13 @@
     <section id="architecture">
       <h2>Schema-first Spring GraphQL and federation</h2>
       <p>Products owns catalog identity and descriptive fields. Pricing adds
-        commercial fields. Both are ordinary synchronous Spring Boot
-        applications backed by immutable Java collections.</p>
+        commercial fields. Both run on Spring WebFlux and Reactor Netty, with
+        repositories and controllers written in terms of <code>Mono</code> and
+        <code>Flux</code>, backed by immutable Java collections.</p>
+      <p class="note">Nothing here blocks: there is no database, and Router does
+        all cross-subgraph fan-out. The reactive stack demonstrates the
+        programming model rather than any throughput gain — with no I/O to
+        overlap, Netty and Tomcat would serve this workload equally well.</p>
       <p>Each service exposes its runtime Federation SDL. Rover composes those
         schemas into a supergraph, and Apollo Router serves the single client
         endpoint at <code>http://localhost:4000/</code>. No Apollo account or
@@ -194,26 +200,62 @@ input QuoteInput {
         the initial result, patch paths, labels, and completion marker.</p>
     </section>
 
+    <section id="subscription">
+      <h2>A subscription that stops at the subgraph</h2>
+      <pre><code>subscription {
+  priceChanges(productId: "p-100") {
+    productId
+    price
+    sequence
+  }
+}</code></pre>
+      <p>Pricing streams five snapshots 200&nbsp;ms apart, over WebSocket and
+        over SSE. Sequence 1 carries the unchanged seeded price and each later
+        emission adds <code>0.10</code>: <code>99.90</code>,
+        <code>100.00</code>, <code>100.10</code>, <code>100.20</code>,
+        <code>100.30</code>. The stream is finite and fully determined, so tests
+        assert it value by value. An unknown product fails with
+        <code>PRICE_NOT_FOUND</code> before the stream starts.</p>
+      <p class="note">This is not available through Router on port 4000, by
+        design. Routing subscriptions requires connecting Apollo Router to
+        GraphOS with credentials — an account constraint rather than a paid-tier
+        one, since subscriptions are offered on every plan including the free
+        one, but a constraint this account-free lab declines. So
+        <code>Subscription</code> and <code>PriceChange</code> are stripped from
+        the SDL handed to composition, along with the
+        <code>subscription:</code> root line that would otherwise dangle and
+        fail composition.</p>
+      <p>Worth stating plainly: WebSocket subscriptions are <em>not</em>
+        something WebFlux unlocks. Spring Boot autoconfigures GraphQL over
+        WebSocket on the servlet stack too. What the reactive stack contributes
+        is that the handler returns a <code>Flux</code> natively.</p>
+    </section>
+
     <section id="testing">
       <h2>Errors, composition, and the test pyramid</h2>
       <p>Stable error extensions include <code>PRODUCT_NOT_FOUND</code>,
         <code>PRICE_NOT_FOUND</code>, and <code>VALIDATION_ERROR</code>. Only
         Actuator health is exposed; Sandbox and GraphiQL are local tools.</p>
       <p>JUnit 6 unit tests cover seeds, money, scalar coercion, labels, and
-        batching. Spring integration tests load the real schemas. Router E2E
-        tests cover federation, polymorphism, required fields, outage recovery,
-        and deferred responses. Composition runs twice and is compared byte for
-        byte to detect nondeterminism and stale artifacts.</p>
+        batching, asserting reactive returns with <code>StepVerifier</code>.
+        Spring integration tests load the real schemas, and one WebSocket test
+        runs against a real Reactor Netty server — the authoritative proof that
+        the reactive transport works end to end rather than only in process.
+        Router E2E tests cover federation, polymorphism, required fields, outage
+        recovery, and deferred responses, plus SSE against Pricing directly and
+        an assertion that the supergraph exposes no subscription root.
+        Composition runs twice and is compared byte for byte to detect
+        nondeterminism and stale artifacts.</p>
     </section>
 
     <section id="boundaries">
       <h2>Deliberate boundaries</h2>
       <p class="note">This milestone does not include persistence,
-        authentication, WebFlux, observability infrastructure, AWS/CDK, or
-        production hardening. The in-memory repositories return whole objects,
-        so no storage projection is derived from a selection set. Its focus is
-        correct participation by synchronous Spring GraphQL services in an
-        Apollo supergraph.</p>
+        authentication, observability infrastructure, AWS/CDK, or production
+        hardening. The in-memory repositories return whole objects, so no
+        storage projection is derived from a selection set. Subscriptions are
+        demonstrated, but only up to the subgraph boundary. Its focus is correct
+        participation by Spring GraphQL services in an Apollo supergraph.</p>
       <p>See the <a href="../README.md">workspace README</a>,
         <a href="../supergraph/README.md">supergraph runbook</a>, or the
         <a href="CONCEPTS.md">Markdown concepts guide</a>.</p>

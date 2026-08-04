@@ -180,6 +180,46 @@ query DeferredCommercialData {
 The Router sends the basic catalog first and the pricing fields in incremental
 multipart patches.
 
+## Subscriptions: pricing subgraph only
+
+`pricing-subgraph` serves a live price stream:
+
+```graphql
+subscription {
+  priceChanges(productId: "p-100") { productId price sequence }
+}
+```
+
+**This is not available through Router on port 4000, by design.** Routing
+subscriptions through Apollo Router requires connecting it to GraphOS with
+credentials. Subscriptions are offered on every GraphOS plan including the free
+one, so this is an account-and-credentials constraint rather than a paid-tier
+one — but this lab's premise is that it runs with no Apollo account, and CI
+composes unauthenticated. So `Subscription` and `PriceChange` are stripped from
+the SDL handed to composition, and the supergraph has no subscription root.
+
+Subscribe over SSE, which needs no client tooling:
+
+```sh
+curl --no-buffer --request POST \
+  --header 'Content-Type: application/json' \
+  --header 'Accept: text/event-stream' \
+  --data '{"query":"subscription { priceChanges(productId: \"p-100\") { productId price sequence } }"}' \
+  http://localhost:8082/graphql
+```
+
+Five `event:next` frames arrive 200 ms apart — `99.90`, `100.00`, `100.10`,
+`100.20`, `100.30` — followed by `event:complete`. Sequence 1 is the unchanged
+seeded price. An unknown `productId` returns `PRICE_NOT_FOUND` before the
+stream starts.
+
+The same subscription is served over WebSocket at `ws://localhost:8082/graphql`
+using the `graphql-ws` protocol. `PricingSubscriptionWebSocketIT` in
+`pricing-subgraph` exercises that path against a real server; whether the
+bundled GraphiQL build at <http://localhost:8082/graphiql> negotiates the socket
+automatically has not been verified, so prefer the test or a dedicated
+`graphql-ws` client if you need certainty.
+
 ## Test from the command line
 
 Run the built-in smoke query:
@@ -243,15 +283,16 @@ Run all unit and subgraph integration tests:
 make test
 ```
 
-Run the seven end-to-end tests while the stack is running:
+Run the end-to-end tests while the stack is running:
 
 ```sh
 make e2e
 ```
 
 The E2E suite covers federation, polymorphism, `@requires`, quotes, stable error
-codes, restricted Actuator exposure, a Pricing outage and recovery, and
-multipart `@defer`.
+codes, restricted Actuator exposure, a Pricing outage and recovery, multipart
+`@defer`, the SSE price stream against `pricing-subgraph` directly, and an
+assertion that the composed supergraph exposes no subscription root.
 
 Run the complete clean verification workflow:
 
@@ -277,6 +318,11 @@ match the checked-in artifacts:
 ```sh
 make compose-check
 ```
+
+Export additionally strips the pricing subgraph's local-only subscription
+surface via `scripts/strip-local-subscription.sh`, asserting on both sides: the
+live `_service { sdl }` must contain `Subscription`, `PriceChange`, and the
+`subscription:` root, and the published schema must contain none of them.
 
 The Apollo Router and Rover run locally from pinned container images. Neither
 an Apollo account nor a GraphOS API key is required.

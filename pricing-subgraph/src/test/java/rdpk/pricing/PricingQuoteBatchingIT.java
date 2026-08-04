@@ -15,6 +15,7 @@ import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Primary;
 import org.springframework.graphql.test.tester.GraphQlTester;
+import reactor.core.publisher.Mono;
 
 /**
  * {@code CatalogItem.quote} takes an argument, so it cannot use {@code @BatchMapping}.
@@ -77,11 +78,14 @@ class PricingQuoteBatchingIT {
             lastIds = Set.of();
         }
 
+        /** Counts on subscribe so the tally reflects lookups performed, not Monos assembled. */
         @Override
-        public Map<String, BigDecimal> findAllByProductId(Set<String> productIds) {
-            bulkCalls++;
-            lastIds = Set.copyOf(productIds);
-            return super.findAllByProductId(productIds);
+        public Mono<Map<String, BigDecimal>> findAllByProductId(Set<String> productIds) {
+            return super.findAllByProductId(productIds)
+                    .doOnSubscribe(subscription -> {
+                        bulkCalls++;
+                        lastIds = Set.copyOf(productIds);
+                    });
         }
     }
 }

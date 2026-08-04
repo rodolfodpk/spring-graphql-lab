@@ -14,7 +14,7 @@ class CatalogRepositoryTest {
 
     @Test
     void preservesSeedOrderAndExactSubtypeData() {
-        var items = repository.findAll();
+        List<CatalogItem> items = repository.findAll().collectList().block();
 
         assertAll(
                 () -> assertEquals(

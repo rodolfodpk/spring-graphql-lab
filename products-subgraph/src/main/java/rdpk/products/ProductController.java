@@ -11,6 +11,8 @@ import org.springframework.graphql.data.federation.EntityMapping;
 import org.springframework.graphql.data.method.annotation.GraphQlExceptionHandler;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.stereotype.Controller;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @Controller
 public final class ProductController {
@@ -22,45 +24,33 @@ public final class ProductController {
     }
 
     @QueryMapping
-    public Product product(@Argument String id) {
-        CatalogItem item = resolveRequired(id);
-        if (item instanceof Product product) {
-            return product;
-        }
-        throw new ProductNotFoundException(id);
+    public Mono<Product> product(@Argument String id) {
+        return resolveRequired(id, Product.class);
     }
 
     @QueryMapping
-    public List<Product> products() {
+    public Flux<Product> products() {
         return repository.findProducts();
     }
 
     @QueryMapping
-    public List<CatalogItem> catalog() {
+    public Flux<CatalogItem> catalog() {
         return repository.findAll();
     }
 
     @EntityMapping(name = "CatalogItem")
-    public List<CatalogItem> catalogItem(List<Map<String, Object>> representations) {
-        return representations.stream()
-                .map(representation -> resolveRequired((String) representation.get("id")))
-                .toList();
+    public Flux<CatalogItem> catalogItem(List<Map<String, Object>> representations) {
+        return resolveAll(representations, CatalogItem.class);
     }
 
     @EntityMapping(name = "Product")
-    public List<Product> productEntities(List<Map<String, Object>> representations) {
-        return representations.stream()
-                .map(representation -> resolveRequired((String) representation.get("id")))
-                .map(Product.class::cast)
-                .toList();
+    public Flux<Product> productEntities(List<Map<String, Object>> representations) {
+        return resolveAll(representations, Product.class);
     }
 
     @EntityMapping(name = "DigitalProduct")
-    public List<DigitalProduct> digitalProductEntities(List<Map<String, Object>> representations) {
-        return representations.stream()
-                .map(representation -> resolveRequired((String) representation.get("id")))
-                .map(DigitalProduct.class::cast)
-                .toList();
+    public Flux<DigitalProduct> digitalProductEntities(List<Map<String, Object>> representations) {
+        return resolveAll(representations, DigitalProduct.class);
     }
 
     @GraphQlExceptionHandler
@@ -71,7 +61,24 @@ public final class ProductController {
                 .build();
     }
 
-    private CatalogItem resolveRequired(String id) {
-        return repository.findById(id).orElseThrow(() -> new ProductNotFoundException(id));
+    /**
+     * {@code concatMap} rather than {@code flatMap}: federation requires the resolved entities to
+     * line up positionally with the representations they were requested for.
+     */
+    private <T extends CatalogItem> Flux<T> resolveAll(
+            List<Map<String, Object>> representations, Class<T> type) {
+        return Flux.fromIterable(representations)
+                .concatMap(representation -> resolveRequired((String) representation.get("id"), type));
+    }
+
+    /**
+     * Narrows by filtering, never by casting. A bare cast would surface an id that resolves to the
+     * wrong subtype as a ClassCastException instead of the documented PRODUCT_NOT_FOUND code.
+     */
+    private <T extends CatalogItem> Mono<T> resolveRequired(String id, Class<T> type) {
+        return repository.findById(id)
+                .filter(type::isInstance)
+                .map(type::cast)
+                .switchIfEmpty(Mono.error(() -> new ProductNotFoundException(id)));
     }
 }

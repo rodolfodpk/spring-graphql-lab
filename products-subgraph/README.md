@@ -1,6 +1,7 @@
 # Products
 
-Synchronous Spring Boot 4.1 / Spring GraphQL Products subgraph.
+Reactive Spring Boot 4.1 / Spring GraphQL Products subgraph, running on WebFlux
+and Reactor Netty.
 
 - Java release: 21
 - GraphQL Java: 25.0

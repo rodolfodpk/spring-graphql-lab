@@ -1,6 +1,7 @@
 package rdpk.pricing;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -20,13 +21,26 @@ import org.springframework.graphql.data.method.annotation.BatchMapping;
 import org.springframework.graphql.data.method.annotation.GraphQlExceptionHandler;
 import org.springframework.graphql.data.method.annotation.QueryMapping;
 import org.springframework.graphql.data.method.annotation.SchemaMapping;
+import org.springframework.graphql.data.method.annotation.SubscriptionMapping;
 import org.springframework.stereotype.Controller;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.Mono;
 
 @Controller
 public final class PricingController {
 
     /** Name of the DataLoader registered in {@link FederationConfiguration}. */
     static final String PRICE_LOADER = "pricesById";
+
+    /**
+     * The price stream is deliberately finite and fully determined: sequence 1 carries the
+     * unchanged seeded price, and each later emission adds one delta. Tests assert these values.
+     */
+    static final Duration PRICE_CHANGE_INTERVAL = Duration.ofMillis(200);
+
+    static final int PRICE_CHANGE_COUNT = 5;
+
+    static final BigDecimal PRICE_CHANGE_DELTA = new BigDecimal("0.10");
 
     private final PriceRepository repository;
 
@@ -35,58 +49,72 @@ public final class PricingController {
     }
 
     @QueryMapping
-    public String pricingHealth() {
-        return "ok";
+    public Mono<String> pricingHealth() {
+        return Mono.just("ok");
     }
 
+    /**
+     * {@code concatMap} rather than {@code flatMap}: federation requires the resolved references
+     * to line up positionally with the representations they were requested for.
+     */
     @EntityMapping(name = "CatalogItem")
-    public List<CatalogItemRef> catalogItem(List<Map<String, Object>> representations) {
-        return representations.stream()
-                .map(representation -> reference(
+    public Flux<CatalogItemRef> catalogItem(List<Map<String, Object>> representations) {
+        return Flux.fromIterable(representations)
+                .concatMap(representation -> reference(
                         (String) representation.get("id"),
-                        representation.get("category")))
-                .toList();
+                        representation.get("category")));
     }
 
     @BatchMapping(typeName = "CatalogItem", field = "price")
-    public Map<CatalogItemRef, BigDecimal> price(List<CatalogItemRef> items) {
+    public Mono<Map<CatalogItemRef, BigDecimal>> price(List<CatalogItemRef> items) {
         Set<String> ids = new LinkedHashSet<>();
         items.forEach(item -> ids.add(item.id()));
-        Map<String, BigDecimal> prices = repository.findAllByProductId(ids);
-        return items.stream().collect(Collectors.toMap(
-                item -> item,
-                item -> requiredPrice(item.id(), prices),
-                (left, right) -> left,
-                LinkedHashMap::new));
+        return repository.findAllByProductId(ids)
+                .map(prices -> items.stream().collect(Collectors.toMap(
+                        item -> item,
+                        item -> requiredPrice(item.id(), prices),
+                        (left, right) -> left,
+                        LinkedHashMap::new)));
     }
 
     @SchemaMapping(typeName = "CatalogItem", field = "quote")
-    public CompletableFuture<Quote> quote(CatalogItemRef item, @Argument QuoteInput input,
+    public Mono<Quote> quote(CatalogItemRef item, @Argument QuoteInput input,
             DataFetchingEnvironment environment) {
-        // Validate before loading so the exception stays synchronous. Thrown inside the
-        // callback below it would surface wrapped in a CompletionException, which the
-        // PricingException handler would not match.
+        // Validate up front rather than inside the chain below. Reactor propagates an exception
+        // thrown in an operator unwrapped, so the PricingException handler would match either
+        // way -- this simply keeps the check where it reads.
         if (input.quantity() < 1) {
             throw new PricingException("VALIDATION_ERROR", "Quantity must be at least 1");
         }
         DataLoader<String, BigDecimal> loader = environment.getDataLoader(PRICE_LOADER);
-        return loader.load(item.id()).thenApply(price -> {
-            if (price == null) {
-                throw new PricingException("PRICE_NOT_FOUND", "Price was not found");
-            }
-            return Money.quote(price, input.quantity());
-        });
+        // Load eagerly. Deferring it into Mono.fromFuture(Supplier) would move the call out of
+        // the DataLoader's dispatch window and silently unbatch the field.
+        CompletableFuture<BigDecimal> future = loader.load(item.id());
+        return Mono.fromFuture(future)
+                .map(price -> Money.quote(price, input.quantity()))
+                .switchIfEmpty(Mono.error(
+                        () -> new PricingException("PRICE_NOT_FOUND", "Price was not found")));
     }
 
     @SchemaMapping(typeName = "CatalogItem", field = "priceLabel")
-    public String priceLabel(CatalogItemRef item) {
+    public Mono<String> priceLabel(CatalogItemRef item) {
         if (item.category() == null) {
             throw new PricingException("VALIDATION_ERROR", "Required category was not supplied");
         }
-        return switch (item.category()) {
+        return Mono.just(switch (item.category()) {
             case PHYSICAL -> "Physical price";
             case DIGITAL -> "Digital price";
-        };
+        });
+    }
+
+    @SubscriptionMapping
+    public Flux<PriceChange> priceChanges(@Argument String productId) {
+        return repository.findByProductId(productId)
+                .switchIfEmpty(Mono.error(
+                        () -> new PricingException("PRICE_NOT_FOUND", "Price was not found")))
+                .flatMapMany(initialPrice -> Flux.interval(PRICE_CHANGE_INTERVAL)
+                        .take(PRICE_CHANGE_COUNT)
+                        .map(index -> priceChange(productId, initialPrice, index)));
     }
 
     @GraphQlExceptionHandler
@@ -97,11 +125,18 @@ public final class PricingController {
                 .build();
     }
 
-    private CatalogItemRef reference(String id, @Nullable Object category) {
-        if (!repository.containsProductId(id)) {
-            throw new PricingException("PRICE_NOT_FOUND", "Price was not found");
-        }
-        return new CatalogItemRef(id, parseCategory(category));
+    private Mono<CatalogItemRef> reference(String id, @Nullable Object category) {
+        CatalogCategory parsed = parseCategory(category);
+        return repository.containsProductId(id)
+                .filter(Boolean::booleanValue)
+                .map(present -> new CatalogItemRef(id, parsed))
+                .switchIfEmpty(Mono.error(
+                        () -> new PricingException("PRICE_NOT_FOUND", "Price was not found")));
+    }
+
+    private PriceChange priceChange(String productId, BigDecimal initialPrice, long index) {
+        BigDecimal price = initialPrice.add(PRICE_CHANGE_DELTA.multiply(BigDecimal.valueOf(index)));
+        return new PriceChange(productId, Money.normalize(price), Math.toIntExact(index + 1));
     }
 
     private @Nullable CatalogCategory parseCategory(@Nullable Object category) {

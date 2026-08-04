@@ -8,7 +8,6 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.graphql.data.federation.FederationSchemaFactory;
 import org.springframework.graphql.execution.BatchLoaderRegistry;
 import org.springframework.graphql.execution.RuntimeWiringConfigurer;
-import reactor.core.publisher.Mono;
 
 @Configuration
 public class FederationConfiguration {
@@ -21,8 +20,7 @@ public class FederationConfiguration {
     public FederationConfiguration(BatchLoaderRegistry registry, PriceRepository repository) {
         registry.forTypePair(String.class, BigDecimal.class)
                 .withName(PricingController.PRICE_LOADER)
-                .registerMappedBatchLoader((ids, environment) ->
-                        Mono.just(repository.findAllByProductId(ids)));
+                .registerMappedBatchLoader((ids, environment) -> repository.findAllByProductId(ids));
     }
 
     @Bean

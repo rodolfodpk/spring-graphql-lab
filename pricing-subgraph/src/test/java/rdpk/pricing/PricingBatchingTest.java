@@ -8,6 +8,7 @@ import java.util.Map;
 import java.util.Set;
 
 import org.junit.jupiter.api.Test;
+import reactor.core.publisher.Mono;
 
 class PricingBatchingTest {
 
@@ -21,7 +22,7 @@ class PricingBatchingTest {
                 new CatalogItemRef("p-300", null),
                 new CatalogItemRef("d-400", null));
 
-        Map<CatalogItemRef, BigDecimal> prices = controller.price(items);
+        Map<CatalogItemRef, BigDecimal> prices = controller.price(items).block();
 
         assertEquals(1, repository.calls);
         assertEquals(Set.of("p-100", "p-200", "p-300", "d-400"), repository.lastIds);
@@ -32,11 +33,14 @@ class PricingBatchingTest {
         int calls;
         Set<String> lastIds;
 
+        /** Counts on subscribe so the tally reflects lookups performed, not Monos assembled. */
         @Override
-        public Map<String, BigDecimal> findAllByProductId(Set<String> productIds) {
-            calls++;
-            lastIds = Set.copyOf(productIds);
-            return super.findAllByProductId(productIds);
+        public Mono<Map<String, BigDecimal>> findAllByProductId(Set<String> productIds) {
+            return super.findAllByProductId(productIds)
+                    .doOnSubscribe(subscription -> {
+                        calls++;
+                        lastIds = Set.copyOf(productIds);
+                    });
         }
     }
 }
