@@ -1,0 +1,9 @@
+# Build context is the repository root for every service image.
+# **/target is load-bearing: it keeps jacoco, surefire and failsafe output -- all of which
+# live under target/ -- out of the context, along with the other stack's build output.
+.git
+**/target
+supergraph/.tmp
+docs
+.idea
+*.md

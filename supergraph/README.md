@@ -12,16 +12,40 @@ database or cloud dependency.
 
 ## Repository layout
 
-The three modules live side by side in one repository:
+Each subgraph exists twice — once per stack — over one shared domain model:
 
 ```text
 spring-graphql-lab/
-├── products-subgraph/
-├── pricing-subgraph/
+├── pom.xml                     aggregator only; root mvnw is the sole entry point
+├── model/                      rdpk:lab-model, pure Java 21
+├── reactive/
+│   ├── products-subgraph/      WebFlux + Reactor Netty
+│   └── pricing-subgraph/
+├── servlet/
+│   ├── products-subgraph/      Spring MVC + Tomcat
+│   └── pricing-subgraph/
 └── supergraph/
 ```
 
 Run all commands in this README from `supergraph`.
+
+## Choosing a stack
+
+Every target below takes an optional `STACK`, defaulting to `reactive`:
+
+```sh
+make up                 # reactive
+make up STACK=servlet   # servlet
+```
+
+`STACK` selects which Dockerfile Compose builds and which Maven modules the test
+targets run. Service names, host ports, Router config, the introspected SDL, and
+the E2E suite are identical either way — only one pair runs at a time, and both
+bind `8081`/`8082`. An unrecognised value fails immediately rather than silently
+falling back.
+
+Because both stacks share service names, ports, and image tags, run `make down`
+before switching. `make verify-all` does this for you.
 
 ## Prerequisites
 
@@ -277,11 +301,15 @@ configurations should normally retain Apollo's default error redaction.
 
 ## Run the automated tests
 
-Run all unit and subgraph integration tests:
+Run the model tests plus the selected stack's subgraph tests:
 
 ```sh
 make test
+make test STACK=servlet
 ```
+
+These go through the root Maven wrapper — the module directories have no wrapper
+of their own, because a standalone module build cannot resolve `lab-model`.
 
 Run the end-to-end tests while the stack is running:
 
@@ -297,12 +325,20 @@ assertion that the composed supergraph exposes no subscription root.
 Run the complete clean verification workflow:
 
 ```sh
-make verify
+make verify                # one stack
+make verify STACK=servlet
+make verify-all            # both, with a teardown before each
 ```
 
-This builds and tests all three repositories, starts the stack, verifies
-deterministic schema composition, runs the smoke and E2E suites, and shuts the
-containers down automatically.
+This builds and tests the model and the selected stack, starts the containers,
+verifies deterministic schema composition, runs the smoke and E2E suites, and
+shuts everything down automatically.
+
+`make verify-all` is the parity proof. It runs the whole pipeline against both
+stacks, and `compose-check` compares each stack's freshly introspected SDL
+against the checked-in `schemas/*.graphql`. Passing twice means the two stacks
+publish byte-identical SDL and compose to the identical supergraph — if either
+had drifted, the second run would fail on the comparison rather than on a test.
 
 ## Schema workflow
 

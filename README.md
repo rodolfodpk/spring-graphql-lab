@@ -5,24 +5,53 @@
 [![Java](https://img.shields.io/badge/Java-21-orange?logo=openjdk&logoColor=white)](https://openjdk.org/projects/jdk/21/)
 
 Spring GraphQL Lab is a local reference implementation of Apollo Federation
-with two reactive Spring Boot GraphQL subgraphs. It demonstrates how
-independently owned schemas compose into one client-facing graph without a
-database, cloud account, or paid Apollo service.
+with Spring Boot GraphQL subgraphs. It demonstrates how independently owned
+schemas compose into one client-facing graph without a database, cloud account,
+or paid Apollo service.
+
+Every subgraph is built twice — once on Spring WebFlux and Reactor Netty, once
+on Spring MVC and Tomcat — over one shared, stack-neutral domain model. Both
+stacks publish byte-identical SDL, compose into the identical supergraph, and
+pass the identical E2E suite, so the difference between them is exactly five
+source files.
 
 ## Modules
 
-The single Git repository contains three modules:
+```
+model/                       shared domain, pure Java 21
+reactive/products-subgraph/  WebFlux + Reactor Netty
+reactive/pricing-subgraph/
+servlet/products-subgraph/   Spring MVC + Tomcat
+servlet/pricing-subgraph/
+supergraph/                  composition, Router, E2E
+```
 
 | Module | Responsibility |
 | --- | --- |
-| `products-subgraph` | Owns the catalog and the `CatalogItem` entity interface. |
-| `pricing-subgraph` | Adds prices, quotes, and category-derived labels. |
+| `model` | `rdpk:lab-model` — the ten domain types both subgraphs share. No Spring, GraphQL, Reactor, or servlet dependency. |
+| `<stack>/products-subgraph` | Owns the catalog and the `CatalogItem` entity interface. |
+| `<stack>/pricing-subgraph` | Adds prices, quotes, category-derived labels, and the price subscription. |
 | `supergraph` | Composes the supergraph, runs Apollo Router, owns the E2E tests. |
 
-The services use Java 21, Spring Boot 4.1, Spring GraphQL on WebFlux, Project
-Reactor, Maven, Docker Compose, Apollo Router, and Rover. Both subgraphs run on
-Reactor Netty; repositories and controllers are written in terms of `Mono` and
-`Flux`. All business data is immutable and stored in plain Java collections.
+The services use Java 21, Spring Boot 4.1, Spring GraphQL, Maven, Docker
+Compose, Apollo Router, and Rover. All business data is immutable and stored in
+plain Java collections.
+
+Each stack group holds ten classes. Five are byte-identical across stacks —
+both `*Application` classes, `DecimalScalar`, `CatalogItemRef`, and products'
+`FederationConfiguration`. The other five are where the stacks actually differ:
+both controllers, both repositories, and pricing's `FederationConfiguration`.
+
+The root `pom.xml` aggregates but does not parent, and the root Maven wrapper is
+the only supported entry point — a standalone module build cannot resolve
+`lab-model`. Scope every invocation, for example:
+
+```sh
+./mvnw -pl model,reactive/products-subgraph,reactive/pricing-subgraph -am verify
+```
+
+A bare `./mvnw verify` at the root is not supported: `supergraph`'s failsafe
+binding expects services that are already running. Use the Makefile instead.
 
 ## Start
 
@@ -30,8 +59,12 @@ Prerequisites are Java 21+, Docker Compose v2, Make, and curl.
 
 ```sh
 cd supergraph
-make up
+make up                 # reactive stack (default)
+make up STACK=servlet   # the same graph on Spring MVC and Tomcat
 ```
+
+Both stacks bind the same ports and answer identically, so everything below
+works the same either way. Only one pair runs at a time.
 
 Interactive clients:
 
@@ -51,13 +84,19 @@ troubleshooting, schema composition, and all available Make targets.
 From `supergraph`:
 
 ```sh
-make test
-make verify
+make test                  # model + the selected stack's subgraphs
+make verify                # the full pipeline for one stack
+make verify STACK=servlet
+make verify-all            # both stacks, with a clean teardown before each
 ```
 
 `make test` runs unit and subgraph integration tests. `make verify` additionally
 builds the containers, validates deterministic schema composition, starts the
 Router, runs smoke and federated E2E tests, and shuts everything down.
+
+`make verify-all` is the parity proof: it runs the whole pipeline against both
+stacks. Passing twice means the two publish byte-identical SDL and compose to
+the identical supergraph.
 
 Stop a manually started stack with:
 
@@ -96,6 +135,14 @@ with credentials. Subscriptions are available on every GraphOS plan including
 the free one, so this is an account-and-credentials constraint rather than a
 paid-tier one — but it is still a constraint this lab declines to take on.
 
-The reactive stack here is a demonstration of the programming model, not a
-throughput claim: there is no database and no outbound HTTP, so no thread is
-ever blocked and none of this makes the lab faster.
+Neither stack is here to be faster. There is no database and no outbound HTTP,
+so no thread is ever blocked and nothing in this lab is throughput-limited —
+with no I/O to overlap, Netty and Tomcat serve this workload equally well. The
+two stacks exist so the same federation code can be read in both idioms.
+
+The shared `model` module is likewise a teaching decision, not an architectural
+recommendation: a domain jar shared across independently deployable subgraphs is
+a distributed-monolith smell in production. It is here because it shrinks the
+stack comparison to five files. Federation ownership is unchanged — `lab-model`
+is a compile-time library, never a runtime service, and each subgraph still owns
+its own SDL.

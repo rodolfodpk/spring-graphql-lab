@@ -22,8 +22,9 @@
 <body>
   <header>
     <h1>Spring GraphQL Lab</h1>
-    <p>A local Apollo Federation reference implementation with reactive
-      Spring Boot GraphQL subgraphs.</p>
+    <p>A local Apollo Federation reference implementation with Spring Boot
+      GraphQL subgraphs, built twice — on WebFlux and on Servlet — over one
+      shared domain model.</p>
   </header>
 
   <nav aria-label="Contents">
@@ -48,13 +49,20 @@
     <section id="architecture">
       <h2>Schema-first Spring GraphQL and federation</h2>
       <p>Products owns catalog identity and descriptive fields. Pricing adds
-        commercial fields. Both run on Spring WebFlux and Reactor Netty, with
-        repositories and controllers written in terms of <code>Mono</code> and
-        <code>Flux</code>, backed by immutable Java collections.</p>
-      <p class="note">Nothing here blocks: there is no database, and Router does
-        all cross-subgraph fan-out. The reactive stack demonstrates the
-        programming model rather than any throughput gain — with no I/O to
-        overlap, Netty and Tomcat would serve this workload equally well.</p>
+        commercial fields. Each exists twice: once on Spring WebFlux and Reactor
+        Netty with repositories and controllers in terms of <code>Mono</code> and
+        <code>Flux</code>, once on Spring MVC and Tomcat returning plain values.
+        Both build on one stack-neutral <code>model</code> module, backed by
+        immutable Java collections.</p>
+      <p class="note">The two stacks publish byte-identical SDL, compose into the
+        identical supergraph, and pass the identical E2E suite — the difference
+        between them is five source files. Nothing here blocks: there is no
+        database, and Router does all cross-subgraph fan-out, so with no I/O to
+        overlap Netty and Tomcat serve this workload equally well. The stacks
+        exist to be read side by side, not to be benchmarked.</p>
+      <p class="note">Router itself is a Rust binary on Tokio, so cross-subgraph
+        fan-out is async either way. The stack choice reaches only inside a
+        subgraph process, after Router has already fanned out.</p>
       <p>Each service exposes its runtime Federation SDL. Rover composes those
         schemas into a supergraph, and Apollo Router serves the single client
         endpoint at <code>http://localhost:4000/</code>. No Apollo account or
@@ -225,10 +233,16 @@ input QuoteInput {
         the SDL handed to composition, along with the
         <code>subscription:</code> root line that would otherwise dangle and
         fail composition.</p>
-      <p>Worth stating plainly: WebSocket subscriptions are <em>not</em>
-        something WebFlux unlocks. Spring Boot autoconfigures GraphQL over
-        WebSocket on the servlet stack too. What the reactive stack contributes
-        is that the handler returns a <code>Flux</code> natively.</p>
+      <p>WebSocket subscriptions are <em>not</em> something WebFlux unlocks, and
+        this repository demonstrates it rather than asserting it: the servlet
+        pricing subgraph serves the same subscription over a real graphql-ws
+        handshake against Tomcat, with the same five values. The one thing it
+        needs and the reactive twin does not is
+        <code>spring-boot-starter-websocket</code>, because the webmvc starter
+        satisfies neither class condition guarding the autoconfiguration. The
+        handler returns a <code>Flux</code> on both stacks regardless —
+        graphql-java's subscription contract is <code>Publisher</code>-based
+        everywhere.</p>
     </section>
 
     <section id="testing">
@@ -237,10 +251,13 @@ input QuoteInput {
         <code>PRICE_NOT_FOUND</code>, and <code>VALIDATION_ERROR</code>. Only
         Actuator health is exposed; Sandbox and GraphiQL are local tools.</p>
       <p>JUnit 6 unit tests cover seeds, money, scalar coercion, labels, and
-        batching, asserting reactive returns with <code>StepVerifier</code>.
-        Spring integration tests load the real schemas, and one WebSocket test
-        runs against a real Reactor Netty server — the authoritative proof that
-        the reactive transport works end to end rather than only in process.
+        batching; the reactive versions assert with <code>StepVerifier</code>,
+        the servlet versions assert plain values and <code>Optional</code>. Money
+        rules live in <code>model</code>, with no Spring or Reactor on the
+        classpath at all. Spring integration tests load the real schemas, and one
+        WebSocket test per stack runs against a real server — Reactor Netty on
+        one side, Tomcat on the other — each asserting its own application-context
+        type so neither stack can quietly test the other.
         Router E2E tests cover federation, polymorphism, required fields, outage
         recovery, and deferred responses, plus SSE against Pricing directly and
         an assertion that the supergraph exposes no subscription root.

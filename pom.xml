@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>rdpk</groupId>
+    <artifactId>spring-graphql-lab</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <packaging>pom</packaging>
+    <name>spring-graphql-lab</name>
+    <!--
+        Aggregator only: deliberately NOT the parent of the service modules, which keep
+        spring-boot-starter-parent. This exists so one reactor can build lab-model together with a
+        chosen stack, and so `-pl <stack>/<service> -am` resolves lab-model from source.
+
+        A bare `./mvnw verify` here is not a supported command: supergraph's failsafe binding runs
+        the E2E suite against services that must already be running. Always scope invocations,
+        e.g. `./mvnw -pl model,reactive/products-subgraph,reactive/pricing-subgraph -am verify`,
+        or go through supergraph/Makefile, which is the real interface.
+    -->
+    <modules>
+        <module>model</module>
+        <module>reactive/products-subgraph</module>
+        <module>reactive/pricing-subgraph</module>
+        <module>servlet/products-subgraph</module>
+        <module>servlet/pricing-subgraph</module>
+        <module>supergraph</module>
+    </modules>
+</project>

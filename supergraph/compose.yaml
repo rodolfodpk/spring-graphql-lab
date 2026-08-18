@@ -3,7 +3,9 @@ name: spring-graphql-lab
 services:
   products:
     build:
-      context: ../products-subgraph
+      # Root context so lab-model builds from source; STACK picks which twin is served.
+      context: ..
+      dockerfile: ${STACK:-reactive}/products-subgraph/Dockerfile
       args:
         BUILD_IMAGE: ${BUILD_IMAGE:-eclipse-temurin:21.0.11_10-jdk-jammy}
         RUNTIME_IMAGE: ${RUNTIME_IMAGE:-eclipse-temurin:21.0.11_10-jre-jammy}
@@ -18,7 +20,9 @@ services:
 
   pricing:
     build:
-      context: ../pricing-subgraph
+      # Root context so lab-model builds from source; STACK picks which twin is served.
+      context: ..
+      dockerfile: ${STACK:-reactive}/pricing-subgraph/Dockerfile
       args:
         BUILD_IMAGE: ${BUILD_IMAGE:-eclipse-temurin:21.0.11_10-jdk-jammy}
         RUNTIME_IMAGE: ${RUNTIME_IMAGE:-eclipse-temurin:21.0.11_10-jre-jammy}

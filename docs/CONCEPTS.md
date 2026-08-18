@@ -6,48 +6,131 @@ presents both schemas to a client as one graph. Keeping the domain
 deterministic makes the mechanics of federation visible without database or
 cloud infrastructure.
 
-## Schema-first reactive Spring GraphQL
+## Schema-first Spring GraphQL, on two stacks
 
 Both subgraphs define their public contracts in GraphQL SDL and implement them
-with annotated controllers running on Spring WebFlux and Reactor Netty.
-Repositories and controllers are written in terms of `Mono` and `Flux`.
+with annotated controllers. Spring GraphQL loads each `schema.graphqls`, maps
+`@QueryMapping`, `@SchemaMapping`, `@BatchMapping`, and `@SubscriptionMapping`
+methods to fields, and exposes the standard `/graphql` endpoint. GraphiQL is
+enabled locally for inspecting each subgraph.
 
-Spring GraphQL loads each `schema.graphqls`, maps `@QueryMapping`,
-`@SchemaMapping`, `@BatchMapping`, and `@SubscriptionMapping` methods to
-fields, and exposes the standard `/graphql` endpoint. GraphiQL is enabled
-locally for inspecting each subgraph.
+Each subgraph is built twice: once on Spring WebFlux and Reactor Netty, once on
+Spring MVC and Tomcat. Both build against one shared `model` module, and both
+are exercised by the same E2E suite.
+
+## The same subgraph on two stacks
+
+This is the payload of the whole layout, so it is worth being precise about what
+is and is not different.
+
+**Identical:** the published SDL, byte for byte. The composed supergraph. Every
+one of the ten E2E assertions. All ten `model` classes. And five of the ten
+classes in each stack group — both `*Application` classes, `DecimalScalar`,
+`CatalogItemRef`, and products' `FederationConfiguration`.
+
+**Different**, in exactly five files plus their build config:
+
+| | reactive | servlet |
+| --- | --- | --- |
+| web starter | `spring-boot-starter-webflux` | `spring-boot-starter-webmvc` |
+| server | Reactor Netty | Tomcat |
+| repositories | `Mono` / `Flux` | plain values, `Optional` for absence |
+| controller returns | `Mono<T>` / `Flux<T>` | `T` / `List<T>` |
+| DataLoader bridge | `Mono.fromFuture(future)` | `future.thenApply(...)` |
+| batch loader registration | passes its `Mono` through | must wrap in `Mono.just(...)` |
+| WebSocket transport | included | needs `spring-boot-starter-websocket` |
+
+Two of those rows are the ones that actually teach something.
+
+`BatchLoaderRegistry.registerMappedBatchLoader` requires a `Mono<Map<K,V>>`. The
+reactive repository already returns one, so it is passed straight through; the
+servlet repository returns a bare `Map`, so the servlet side *must* write
+`Mono.just(repository.findAllByProductId(ids))`. That wrapper is not an
+anti-pattern there — with a synchronous repository it is the only legal form.
+
+And `Subscription.priceChanges` returns a `Flux` **on both stacks**. graphql-java's
+subscription contract is `Publisher`-based on every transport, so the servlet
+controller returns a `Flux` too, over a blocking repository. That is a framework
+contract, not reactive code leaking across.
+
+### What the stack choice cannot touch
+
+The entry point at `:4000` is Apollo Router, a Rust binary on Tokio and Hyper.
+Router does all cross-subgraph fan-out, and that fan-out is async and
+non-blocking regardless of what the subgraphs run on. There is no "reactive vs
+blocking" decision available at that tier at all.
+
+So query planning, cross-subgraph concurrency, and `@defer` incremental delivery
+— which Router assembles, with subgraphs returning ordinary GraphQL JSON either
+way — are unaffected by the stack. The choice is scoped entirely to what happens
+inside a subgraph process *after* Router has already fanned out. This is exactly
+why one unmodified E2E suite can serve as the parity proof, and it is worth
+saying plainly: the reactive stack does not buy concurrency that Router was
+providing all along.
 
 ### What reactive buys here, and what it does not
 
 Nothing in this lab blocks. There is no database, and no subgraph makes an
-outbound HTTP call—Router does all cross-subgraph fan-out. So the reactive
-rewrite is a demonstration of the *programming model*, not a throughput
-improvement. Claiming otherwise would be dishonest: with no I/O to overlap,
-Netty and Tomcat would serve this workload equally well.
+outbound HTTP call. So the reactive stack is a demonstration of the *programming
+model*, not a throughput improvement. Claiming otherwise would be dishonest:
+with no I/O to overlap, Netty and Tomcat serve this workload equally well — and
+now the repository proves it rather than asserting it, since both stacks pass
+the same suite.
 
-What it does buy is a codebase shaped the way a reactive service is shaped, and
-one capability that follows naturally: `Subscription.priceChanges` returns a
-`Flux` straight from the controller.
+What it does buy is a codebase shaped the way a reactive service is shaped. Two
+conventions are worth naming, because they look inconsistent otherwise:
 
-Two conventions are worth naming, because they look inconsistent otherwise:
-
-- **Every repository method returns `Mono` or `Flux`, and reports a missing row
-  as an empty `Mono` rather than an exception.** `PriceRepository.containsProductId`
-  returning `Mono<Boolean>` is pure ceremony over a `HashMap`. It is written that
-  way because the repository interface is the seam where a real datastore would
-  sit, and a method returning a bare `boolean` today cannot become an R2DBC
-  lookup tomorrow without changing every caller. Turning absence into a domain
-  error stays the caller's decision.
+- **Every reactive repository method returns `Mono` or `Flux`, and reports a
+  missing row as an empty `Mono` rather than an exception.**
+  `PriceRepository.containsProductId` returning `Mono<Boolean>` is pure ceremony
+  over a `HashMap`. It is written that way because the repository interface is
+  the seam where a real datastore would sit, and a method returning a bare
+  `boolean` today cannot become an R2DBC lookup tomorrow without changing every
+  caller. The servlet twin makes the same point from the other side: it returns
+  `Optional<BigDecimal>`, so absence is still the caller's decision to escalate.
 - **Controllers may still throw synchronously.** `parseCategory` and the `quote`
   quantity check throw rather than returning `Mono.error`. Reactor converts a
   throw inside an operator into an `onError` signal, so `@GraphQlExceptionHandler`
-  matches either way, and the check reads better where it is. Wrapping the body
-  in `Mono.defer` would be equally valid; the point is that a synchronous throw
-  in a controller is a deliberate choice here, not an oversight.
+  matches either way, and the check reads better where it is. This is also what
+  lets the two controllers keep identical error semantics.
 
 For the same reason, `pricingHealth()` returning `Mono<String>` is uniformity,
 not necessity. Do not read it as a rule that every trivial computation belongs
 in a `Mono`.
+
+### Order of validation is observable
+
+`PricingController.reference` parses the category *before* checking that the
+product exists. That order is part of the contract: an invalid category on an
+unknown id must report `VALIDATION_ERROR`, not `PRICE_NOT_FOUND`. Both stacks
+implement the same order, and both are checked against a running server.
+
+It is called out because it is the kind of detail a rewrite silently inverts.
+
+## The shared model, and what it costs
+
+`model` holds the ten types both subgraphs need — the catalog hierarchy plus the
+pricing value types — as `rdpk:lab-model`, with no Spring, GraphQL, Reactor, or
+servlet dependency. Its compile classpath is empty; the only entry in its
+dependency tree is test-scoped JUnit, and CI asserts that.
+
+Two things stay *out* of it deliberately. `DecimalScalar` is graphql-java
+coercion, and `CatalogItemRef` is a federation representation stub — neither is
+domain vocabulary, so both live in the pricing subgraph.
+
+Pricing shares only the catalog *category vocabulary*, not the Products entity
+hierarchy: it uses `CatalogCategory` to coerce the `@external` category field and
+derive `priceLabel`, and never touches `CatalogItem`, `Product`, or
+`DigitalProduct`. That overlap is an enum the federation contract already forces
+both subgraphs to agree on.
+
+The honest cost: a domain jar shared across independently deployable subgraphs is
+a distributed-monolith smell. Federation's premise is that each subgraph owns its
+types and ships without coordinating, and a shared jar trades some of that away.
+It earns its place here by shrinking the stack comparison from 21 duplicated
+classes to five differing files. Federation ownership itself is unchanged —
+`lab-model` is a compile-time library, never a runtime service, and each subgraph
+still owns and publishes its own SDL.
 
 ## Subgraphs, supergraph, Router, and Rover
 
@@ -269,8 +352,14 @@ still only the item id — the quantity is applied afterwards as pure
 computation — so it batches through a DataLoader registered by name:
 
 ```java
+// reactive: the repository already returns Mono<Map<String, BigDecimal>>
 registry.forTypePair(String.class, BigDecimal.class)
         .withName(PricingController.PRICE_LOADER)
+        .registerMappedBatchLoader((ids, environment) ->
+                repository.findAllByProductId(ids));
+
+// servlet: the repository returns a bare Map, and registerMappedBatchLoader
+// requires a Mono, so the wrapper is mandatory rather than incidental
         .registerMappedBatchLoader((ids, environment) ->
                 Mono.just(repository.findAllByProductId(ids)));
 ```
@@ -342,12 +431,22 @@ curl -N -X POST http://127.0.0.1:8082/graphql \
   -d '{"query":"subscription { priceChanges(productId: \"p-100\") { price sequence } }"}'
 ```
 
-This is worth stating plainly, because it is easy to oversell: **WebSocket
-subscriptions are not something WebFlux unlocks.** Spring Boot autoconfigures
-GraphQL over WebSocket on the servlet stack too, and SSE rides the ordinary
-GraphQL HTTP endpoint either way. What the reactive stack contributes is that
-the handler returns a `Flux` natively and no extra servlet WebSocket starter is
-needed.
+**WebSocket subscriptions are not something WebFlux unlocks**, and this repo now
+demonstrates that rather than asserting it: `servlet/pricing-subgraph` serves the
+same subscription over a real graphql-ws handshake against Tomcat, delivering the
+same five values. SSE rides the ordinary GraphQL HTTP endpoint on both stacks.
+
+What the servlet stack needs and the reactive one does not is one dependency.
+`GraphQlWebMvcAutoConfiguration$WebSocketConfiguration` is gated on
+`@ConditionalOnClass({HttpMessageConverter, jakarta.websocket.server.ServerContainer,
+org.springframework.web.socket.WebSocketHandler})` plus
+`@ConditionalOnProperty("spring.graphql.websocket.path")`. The webmvc starter
+satisfies neither class condition, so `spring-boot-starter-websocket` is required.
+SSE needs nothing extra — `GraphQlSseHandler` ships in `spring-graphql` for both
+transports.
+
+And the handler returns a `Flux` on both stacks regardless, because graphql-java's
+subscription contract is `Publisher`-based everywhere.
 
 ### Why it is stripped from the supergraph
 
@@ -385,22 +484,33 @@ GraphiQL pages are intentionally local diagnostic tools.
 
 The example uses JUnit 6 at several levels:
 
-- Unit tests cover seeded values, money rules, scalar coercion, label mapping,
-  and batching call counts. Reactive returns are asserted with `StepVerifier`.
+- `model` owns the pure-domain unit tests — money rules and quote arithmetic —
+  with no Spring or Reactor on the classpath at all.
+- Per-stack unit tests cover seeded values, scalar coercion, label mapping, and
+  batching call counts. The reactive versions assert with `StepVerifier`; the
+  servlet versions assert plain values and `Optional`, which is the same
+  behaviour expressed in the other idiom.
 - Spring GraphQL integration tests load each real schema and exercise mappings,
   entity representations, validation, Federation SDL, and the subscription
   through `ExecutionGraphQlServiceTester`.
-- One WebSocket integration test runs against a real Reactor Netty server with
-  `WebSocketGraphQlTester`, which is the authoritative proof that the reactive
-  transport works end to end rather than only in process.
+- One WebSocket integration test per stack runs against a real server with
+  `WebSocketGraphQlTester` — Reactor Netty on one side, Tomcat on the other —
+  which is the authoritative proof that each transport works end to end rather
+  than only in process. Each asserts its own application-context type, so a
+  misconfigured classpath cannot let one stack quietly test the other. (The
+  *client* is Reactor-based in both, because `WebSocketGraphQlTester` accepts
+  only the reactive `WebSocketClient` interface; that is a property of the test
+  harness, not of the server under test.)
 - E2E tests call Apollo Router and cover cross-subgraph queries, polymorphism,
   `@requires`, quotes, errors, health exposure, outage recovery, and `@defer`;
   plus SSE against `pricing-subgraph` directly, and an assertion that the
   supergraph exposes no `Subscription`.
 - Schema checks export runtime SDL, compose twice, and detect stale artifacts.
 
-`make verify` executes the complete path and removes the local containers when
-finished.
+`make verify` executes the complete path for one stack and removes the local
+containers when finished. `make verify-all` runs it for both, tearing down before
+each — the parity proof, since passing twice means both stacks introspect to
+byte-identical SDL and compose to the identical supergraph.
 
 ## Deliberate boundaries
 
