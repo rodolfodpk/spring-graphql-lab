@@ -50,11 +50,13 @@ jobs:
       # whose meaning varies between grep implementations.
       - name: Assert the model carries no production dependencies
         run: |
+          # dependency:tree resolves outputFile against the module, not the working directory.
           ./mvnw -q -pl model dependency:tree -DoutputFile=model-tree.txt
-          cat model-tree.txt
-          if tail -n +2 model-tree.txt | grep -v ':test$' | grep -q .; then
+          test -f model/model-tree.txt || { echo "::error::dependency:tree wrote no output"; exit 1; }
+          cat model/model-tree.txt
+          if tail -n +2 model/model-tree.txt | grep -v ':test$' | grep -q .; then
             echo "::error::lab-model gained a non-test dependency"
-            tail -n +2 model-tree.txt | grep -v ':test$'
+            tail -n +2 model/model-tree.txt | grep -v ':test$'
             exit 1
           fi
 
