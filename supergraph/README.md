@@ -71,6 +71,32 @@ curl --version
 The Maven wrapper and all required Maven versions are included in the
 repositories.
 
+## Make targets
+
+Every target accepts `STACK=reactive|servlet`, defaulting to `reactive`. All of
+them also work from the repository root, which forwards here.
+
+| Target | What it does |
+| --- | --- |
+| `help` | Lists these targets. |
+| `test` | `lab-model` plus the selected stack's subgraph tests, then the supergraph module's own unit tests. |
+| `build` | Builds the two subgraph images without starting anything. |
+| `subgraphs` | Builds and starts Products and Pricing, then waits for both to report healthy. Does not start Router. |
+| `export-schemas` | Introspects both running subgraphs and rewrites `schemas/*.graphql`. Strips the local subscription from Pricing's SDL. |
+| `compose` | Runs Rover composition and publishes `schemas/*.graphql` and `router/supergraph.graphql`. Use after an intentional schema change. |
+| `compose-check` | Re-introspects and composes twice, comparing against the checked-in artifacts. Fails on drift or non-determinism. Run by `up`. |
+| `up` | `subgraphs` + `compose-check` + Router, all healthy. The normal way to start the lab. |
+| `smoke` | One federated query through Router, asserting a known id and price. |
+| `e2e` | The 10 federated end-to-end tests. Requires the stack to be already running. |
+| `verify` | The full pipeline for one stack: test, up, smoke, e2e, then teardown. |
+| `verify-all` | `verify` for both stacks, tearing down before each. The parity proof. |
+| `down` | Stops and removes the containers, including the Rover tooling profile. |
+| `clean` | `mvn clean` across the whole reactor. |
+
+`build`, `subgraphs`, and `export-schemas` are the granular steps `up` and
+`compose` are built from — useful when diagnosing a single stage, rarely needed
+otherwise.
+
 ## Start everything
 
 ```sh

@@ -18,7 +18,10 @@ MVN := cd .. && ./mvnw
 .PHONY: help test build subgraphs export-schemas compose compose-check up down e2e smoke verify verify-all clean
 
 help:
-	@printf '%s\n' 'make test compose up down e2e verify verify-all [STACK=reactive|servlet]'
+	@printf '%s\n' 'Targets: test build subgraphs export-schemas compose compose-check'
+	@printf '%s\n' '         up smoke e2e verify verify-all down clean'
+	@printf '%s\n' 'All accept STACK=reactive|servlet (default reactive).'
+	@printf '%s\n' 'See README.md for what each one does.'
 
 test:
 	$(MVN) -pl model,$(STACK)/products-subgraph,$(STACK)/pricing-subgraph -am verify
