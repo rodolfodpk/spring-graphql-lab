@@ -2,7 +2,7 @@ name: Java CI
 
 on:
   push:
-    branches: [main]
+    branches: [main, dual-stack]
   pull_request:
     branches: [main]
 
@@ -12,7 +12,19 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        stack: [reactive, servlet]
+
+    # Job level, not per step. Every step that shells out to Docker Compose must see this --
+    # including the always() teardown. Because both stacks share service names, host ports and
+    # image tags, a teardown running without STACK would fall back to reactive and tear down
+    # against the wrong build context, and a missed teardown usually still exits zero.
+    env:
+      STACK: ${{ matrix.stack }}
 
     steps:
       - name: Check out repository
@@ -25,11 +37,32 @@ jobs:
           java-version: "21"
           cache: maven
           cache-dependency-path: |
+            pom.xml
+            model/pom.xml
             supergraph/pom.xml
-            pricing-subgraph/pom.xml
-            products-subgraph/pom.xml
+            reactive/products-subgraph/pom.xml
+            reactive/pricing-subgraph/pom.xml
+            reactive/inventory-subgraph/pom.xml
+            servlet/products-subgraph/pom.xml
+            servlet/pricing-subgraph/pom.xml
+            servlet/inventory-subgraph/pom.xml
 
-      - name: Test subgraphs and local project
+      # The load-bearing check for the model/adapters split. Line 1 is lab-model itself; every
+      # other line is a dependency and must be test-scoped. Deliberately avoids bracket escapes,
+      # whose meaning varies between grep implementations.
+      - name: Assert the model carries no production dependencies
+        run: |
+          # dependency:tree resolves outputFile against the module, not the working directory.
+          ./mvnw -q -pl model dependency:tree -DoutputFile=model-tree.txt
+          test -f model/model-tree.txt || { echo "::error::dependency:tree wrote no output"; exit 1; }
+          cat model/model-tree.txt
+          if tail -n +2 model/model-tree.txt | grep -v ':test$' | grep -q .; then
+            echo "::error::lab-model gained a non-test dependency"
+            tail -n +2 model/model-tree.txt | grep -v ':test$'
+            exit 1
+          fi
+
+      - name: Test model and subgraphs
         working-directory: supergraph
         run: make test
 
@@ -45,6 +78,9 @@ jobs:
         working-directory: supergraph
         run: make e2e
 
+      - name: Assert composition did not drift
+        run: git diff --exit-code -- supergraph/schemas supergraph/router/supergraph.graphql
+
       - name: Stop federated stack
         if: always()
         working-directory: supergraph
@@ -53,6 +89,17 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
-          files: products-subgraph/target/site/jacoco/jacoco.xml,pricing-subgraph/target/site/jacoco/jacoco.xml
+          # lab-model is deliberately absent. It is a dependency-free bag of value types plus
+          # Money, so its line coverage is dominated by generated record accessors and reads ~36%
+          # by construction. The subgraph tests do exercise those types, but JaCoCo reports per
+          # module and lab-model is an external jar to them, so that coverage is attributed
+          # nowhere. Reporting the number anyway just trains everyone to ignore the status.
+          # Every line below needs a trailing comma except the last -- the folded scalar joins
+          # them, so a missing comma silently produces one space-separated path.
+          files: >-
+            ${{ matrix.stack }}/products-subgraph/target/site/jacoco/jacoco.xml,
+            ${{ matrix.stack }}/pricing-subgraph/target/site/jacoco/jacoco.xml,
+            ${{ matrix.stack }}/inventory-subgraph/target/site/jacoco/jacoco.xml
+          flags: ${{ matrix.stack }}
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}

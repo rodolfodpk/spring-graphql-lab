@@ -1,5 +1,11 @@
 # SGL Step 0 — Local Spring GraphQL Federation
 
+> **Superseded in part.** This document is kept as a record of the original
+> milestone. Its "no WebFlux, no subscriptions" constraints no longer hold: both
+> subgraphs were later migrated to WebFlux and Reactor, and `pricing-subgraph`
+> gained a subscription served directly to clients. See `docs/CONCEPTS.md` for
+> the current architecture.
+
 ## Goal
 
 Build a local Apollo Federation reference implementation with two synchronous Spring Boot subgraphs. A client sends GraphQL requests only to Apollo Router, which exposes one federated schema backed by Products and Pricing.

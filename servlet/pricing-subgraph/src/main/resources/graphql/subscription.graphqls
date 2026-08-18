@@ -1,0 +1,17 @@
+type PriceChange {
+  productId: ID!
+  price: Decimal!
+  sequence: Int!
+}
+
+type Subscription {
+  priceChanges(productId: ID!): PriceChange!
+}
+
+# Local-only surface. This subgraph serves these types over WebSocket and SSE, but
+# supergraph/scripts/strip-local-subscription.sh removes them from the SDL published to
+# composition: routing subscriptions through Apollo Router requires connecting it to GraphOS with
+# credentials, and this lab is deliberately account-free.
+#
+# Keep this note below the definitions -- a comment directly above a type is picked up as its
+# description and would be printed into the federation SDL.

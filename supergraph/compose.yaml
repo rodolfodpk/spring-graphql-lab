@@ -3,10 +3,17 @@ name: spring-graphql-lab
 services:
   products:
     build:
-      context: ../products-subgraph
+      # Root context so lab-model builds from source; STACK picks which twin is served.
+      context: ..
+      dockerfile: ${STACK:-reactive}/products-subgraph/Dockerfile
       args:
         BUILD_IMAGE: ${BUILD_IMAGE:-eclipse-temurin:21.0.11_10-jdk-jammy}
         RUNTIME_IMAGE: ${RUNTIME_IMAGE:-eclipse-temurin:21.0.11_10-jre-jammy}
+    environment:
+      # Runtime knobs, so a comparison run needs no rebuild. Virtual threads are ignored by the
+      # reactive stack, which has no thread-per-request model to replace.
+      SPRING_THREADS_VIRTUAL_ENABLED: ${THREADS_VIRTUAL:-false}
+      APP_REPOSITORY_DELAY: ${DELAY:-0ms}
     ports:
       - "8081:8080"
     healthcheck:
@@ -18,10 +25,17 @@ services:
 
   pricing:
     build:
-      context: ../pricing-subgraph
+      # Root context so lab-model builds from source; STACK picks which twin is served.
+      context: ..
+      dockerfile: ${STACK:-reactive}/pricing-subgraph/Dockerfile
       args:
         BUILD_IMAGE: ${BUILD_IMAGE:-eclipse-temurin:21.0.11_10-jdk-jammy}
         RUNTIME_IMAGE: ${RUNTIME_IMAGE:-eclipse-temurin:21.0.11_10-jre-jammy}
+    environment:
+      # Runtime knobs, so a comparison run needs no rebuild. Virtual threads are ignored by the
+      # reactive stack, which has no thread-per-request model to replace.
+      SPRING_THREADS_VIRTUAL_ENABLED: ${THREADS_VIRTUAL:-false}
+      APP_REPOSITORY_DELAY: ${DELAY:-0ms}
     ports:
       - "8082:8080"
     healthcheck:

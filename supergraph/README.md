@@ -12,16 +12,44 @@ database or cloud dependency.
 
 ## Repository layout
 
-The three modules live side by side in one repository:
+Each subgraph exists twice — once per stack — over one shared domain model:
 
 ```text
 spring-graphql-lab/
-├── products-subgraph/
-├── pricing-subgraph/
+├── pom.xml                     aggregator only; root mvnw is the sole entry point
+├── Makefile                    delegates to supergraph/Makefile
+├── model/                      rdpk:lab-model, pure Java 21
+├── reactive/
+│   ├── products-subgraph/      WebFlux + Reactor Netty
+│   └── pricing-subgraph/
+├── servlet/
+│   ├── products-subgraph/      Spring MVC + Tomcat
+│   └── pricing-subgraph/
 └── supergraph/
 ```
 
-Run all commands in this README from `supergraph`.
+Run all commands in this README from `supergraph`. The root `Makefile` forwards
+every target here, so `make up STACK=servlet` works from the repository root too;
+this file stays authoritative because the scripts, `compose.yaml`, and the Rover
+volume mounts are all relative to this directory.
+
+## Choosing a stack
+
+Every target below takes an optional `STACK`, defaulting to `reactive`:
+
+```sh
+make up                 # reactive
+make up STACK=servlet   # servlet
+```
+
+`STACK` selects which Dockerfile Compose builds and which Maven modules the test
+targets run. Service names, host ports, Router config, the introspected SDL, and
+the E2E suite are identical either way — only one pair runs at a time, and both
+bind `8081`/`8082`. An unrecognised value fails immediately rather than silently
+falling back.
+
+Because both stacks share service names, ports, and image tags, run `make down`
+before switching. `make verify-all` does this for you.
 
 ## Prerequisites
 
@@ -42,6 +70,73 @@ curl --version
 
 The Maven wrapper and all required Maven versions are included in the
 repositories.
+
+## Make targets
+
+Every target accepts `STACK=reactive|servlet`, defaulting to `reactive`, plus two
+runtime knobs: `THREADS=platform|virtual` and `DELAY=0ms`. All of them also work
+from the repository root, which forwards here. See
+[Comparing the three configurations](#comparing-the-three-configurations).
+
+| Target | What it does |
+| --- | --- |
+| `help` | Lists these targets. |
+| `test` | `lab-model` plus the selected stack's subgraph tests, then the supergraph module's own unit tests. |
+| `build` | Builds the two subgraph images without starting anything. |
+| `subgraphs` | Builds and starts Products and Pricing, then waits for both to report healthy. Does not start Router. |
+| `export-schemas` | Introspects both running subgraphs and rewrites `schemas/*.graphql`. Strips the local subscription from Pricing's SDL. |
+| `compose` | Runs Rover composition and publishes `schemas/*.graphql` and `router/supergraph.graphql`. Use after an intentional schema change. |
+| `compose-check` | Re-introspects and composes twice, comparing against the checked-in artifacts. Fails on drift or non-determinism. Run by `up`. |
+| `up` | `subgraphs` + `compose-check` + Router, all healthy. The normal way to start the lab. |
+| `smoke` | One federated query through Router, asserting a known id and price. |
+| `e2e` | The 10 federated end-to-end tests. Requires the stack to be already running. |
+| `verify` | The full pipeline for one stack: test, up, smoke, e2e, then teardown. |
+| `verify-all` | `verify` for both stacks, tearing down before each. The parity proof. |
+| `down` | Stops and removes the containers, including the Rover tooling profile. |
+| `clean` | `mvn clean` across the whole reactor. |
+
+`build`, `subgraphs`, and `export-schemas` are the granular steps `up` and
+`compose` are built from — useful when diagnosing a single stage, rarely needed
+otherwise.
+
+## Comparing the three configurations
+
+`THREADS` and `DELAY` are deliberately *orthogonal* to `STACK`, because neither is
+a code variant — no source differs between platform and virtual threads, and the
+delay is a property. Both are passed to the containers as environment, so
+switching them needs no rebuild:
+
+```sh
+make up STACK=reactive                          # Netty, event loop
+make up STACK=servlet                           # Tomcat, platform threads
+make up STACK=servlet THREADS=virtual           # Tomcat, virtual threads
+```
+
+Three runnable configurations out of two code trees. `THREADS` is meaningful only
+on the servlet stack; the reactive stack has no thread-per-request model for
+virtual threads to replace, and ignores it.
+
+**`DELAY` is what makes the comparison mean anything.** With no I/O to overlap,
+all three configurations are indistinguishable — that is the honest result this
+lab reports elsewhere, and no amount of load will change it. Give the
+repositories a simulated round trip and the models finally diverge:
+
+```sh
+make up STACK=servlet THREADS=virtual DELAY=50ms
+```
+
+The wait is the same 50ms in each case; what differs is what it costs. The
+reactive stack defers a subscription and holds no thread. The servlet stack
+blocks its request thread — a platform thread under `THREADS=platform`, a virtual
+one under `THREADS=virtual`, which is precisely the tradeoff virtual threads
+exist to change.
+
+`DELAY` defaults to `0ms`, so every test, the composition check, and the E2E
+suite run exactly as before and remain deterministic. Turn it on only for
+comparison runs.
+
+Measuring throughput needs a real load tool — `curl` in a shell loop measures
+process startup, not the server.
 
 ## Start everything
 
@@ -180,6 +275,46 @@ query DeferredCommercialData {
 The Router sends the basic catalog first and the pricing fields in incremental
 multipart patches.
 
+## Subscriptions: pricing subgraph only
+
+`pricing-subgraph` serves a live price stream:
+
+```graphql
+subscription {
+  priceChanges(productId: "p-100") { productId price sequence }
+}
+```
+
+**This is not available through Router on port 4000, by design.** Routing
+subscriptions through Apollo Router requires connecting it to GraphOS with
+credentials. Subscriptions are offered on every GraphOS plan including the free
+one, so this is an account-and-credentials constraint rather than a paid-tier
+one — but this lab's premise is that it runs with no Apollo account, and CI
+composes unauthenticated. So `Subscription` and `PriceChange` are stripped from
+the SDL handed to composition, and the supergraph has no subscription root.
+
+Subscribe over SSE, which needs no client tooling:
+
+```sh
+curl --no-buffer --request POST \
+  --header 'Content-Type: application/json' \
+  --header 'Accept: text/event-stream' \
+  --data '{"query":"subscription { priceChanges(productId: \"p-100\") { productId price sequence } }"}' \
+  http://localhost:8082/graphql
+```
+
+Five `event:next` frames arrive 200 ms apart — `99.90`, `100.00`, `100.10`,
+`100.20`, `100.30` — followed by `event:complete`. Sequence 1 is the unchanged
+seeded price. An unknown `productId` returns `PRICE_NOT_FOUND` before the
+stream starts.
+
+The same subscription is served over WebSocket at `ws://localhost:8082/graphql`
+using the `graphql-ws` protocol. `PricingSubscriptionWebSocketIT` in
+`pricing-subgraph` exercises that path against a real server; whether the
+bundled GraphiQL build at <http://localhost:8082/graphiql> negotiates the socket
+automatically has not been verified, so prefer the test or a dedicated
+`graphql-ws` client if you need certainty.
+
 ## Test from the command line
 
 Run the built-in smoke query:
@@ -237,31 +372,44 @@ configurations should normally retain Apollo's default error redaction.
 
 ## Run the automated tests
 
-Run all unit and subgraph integration tests:
+Run the model tests plus the selected stack's subgraph tests:
 
 ```sh
 make test
+make test STACK=servlet
 ```
 
-Run the seven end-to-end tests while the stack is running:
+These go through the root Maven wrapper — the module directories have no wrapper
+of their own, because a standalone module build cannot resolve `lab-model`.
+
+Run the end-to-end tests while the stack is running:
 
 ```sh
 make e2e
 ```
 
 The E2E suite covers federation, polymorphism, `@requires`, quotes, stable error
-codes, restricted Actuator exposure, a Pricing outage and recovery, and
-multipart `@defer`.
+codes, restricted Actuator exposure, a Pricing outage and recovery, multipart
+`@defer`, the SSE price stream against `pricing-subgraph` directly, and an
+assertion that the composed supergraph exposes no subscription root.
 
 Run the complete clean verification workflow:
 
 ```sh
-make verify
+make verify                # one stack
+make verify STACK=servlet
+make verify-all            # both, with a teardown before each
 ```
 
-This builds and tests all three repositories, starts the stack, verifies
-deterministic schema composition, runs the smoke and E2E suites, and shuts the
-containers down automatically.
+This builds and tests the model and the selected stack, starts the containers,
+verifies deterministic schema composition, runs the smoke and E2E suites, and
+shuts everything down automatically.
+
+`make verify-all` is the parity proof. It runs the whole pipeline against both
+stacks, and `compose-check` compares each stack's freshly introspected SDL
+against the checked-in `schemas/*.graphql`. Passing twice means the two stacks
+publish byte-identical SDL and compose to the identical supergraph — if either
+had drifted, the second run would fail on the comparison rather than on a test.
 
 ## Schema workflow
 
@@ -277,6 +425,11 @@ match the checked-in artifacts:
 ```sh
 make compose-check
 ```
+
+Export additionally strips the pricing subgraph's local-only subscription
+surface via `scripts/strip-local-subscription.sh`, asserting on both sides: the
+live `_service { sdl }` must contain `Subscription`, `PriceChange`, and the
+`subscription:` root, and the published schema must contain none of them.
 
 The Apollo Router and Rover run locally from pinned container images. Neither
 an Apollo account nor a GraphOS API key is required.

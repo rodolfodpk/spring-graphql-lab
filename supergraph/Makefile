@@ -1,20 +1,58 @@
 SHELL := /bin/sh
 
-.PHONY: help test build subgraphs export-schemas compose compose-check up down e2e smoke verify clean
+# Which stack the subgraph images are built from. Compose reads this to pick a Dockerfile, and the
+# Maven targets below to pick a module path. The explicit error matters: with a plain ifeq/else a
+# typo would silently fall through to reactive and report a green run for a stack never built.
+STACK ?= reactive
+ifeq ($(STACK),reactive)
+else ifeq ($(STACK),servlet)
+else
+$(error STACK must be 'reactive' or 'servlet', got '$(STACK)')
+endif
+export STACK
+
+# Orthogonal to STACK, because neither is a code variant: no source differs between platform and
+# virtual threads, and the delay is a property. Both are passed to the containers as environment,
+# so switching them needs no rebuild.
+#
+#   make up STACK=servlet THREADS=virtual DELAY=50ms
+#
+# THREADS is meaningful only on the servlet stack; the reactive stack has no thread-per-request
+# model for virtual threads to replace, and ignores it.
+THREADS ?= platform
+ifeq ($(THREADS),platform)
+export THREADS_VIRTUAL = false
+else ifeq ($(THREADS),virtual)
+export THREADS_VIRTUAL = true
+else
+$(error THREADS must be 'platform' or 'virtual', got '$(THREADS)')
+endif
+
+DELAY ?= 0ms
+export DELAY
+
+# Every Maven invocation goes through the root wrapper. The nested wrappers are gone, because a
+# standalone module build cannot resolve lab-model.
+MVN := cd .. && ./mvnw
+
+.PHONY: help test build subgraphs export-schemas compose compose-check up down e2e smoke verify verify-all clean
 
 help:
-	@printf '%s\n' 'make test compose up down e2e verify'
+	@printf '%s\n' 'Targets: test build subgraphs export-schemas compose compose-check'
+	@printf '%s\n' '         up smoke e2e verify verify-all down clean'
+	@printf '%s\n' 'All accept STACK=reactive|servlet (default reactive).'
+	@printf '%s\n' 'Runtime knobs: THREADS=platform|virtual  DELAY=0ms'
+	@printf '%s\n' 'See README.md for what each one does.'
 
 test:
-	cd ../products-subgraph && ./mvnw verify
-	cd ../pricing-subgraph && ./mvnw verify
-	./mvnw test
+	$(MVN) -pl model,$(STACK)/products-subgraph,$(STACK)/pricing-subgraph,$(STACK)/inventory-subgraph -am verify
+	$(MVN) -pl supergraph test
 
 build:
 	docker compose build products pricing
 
 subgraphs:
-	docker compose up -d --build products pricing
+	docker compose up -d --build --force-recreate products pricing
 	./scripts/wait-for-healthy.sh
 
 export-schemas: subgraphs
@@ -34,7 +72,7 @@ down:
 	docker compose --profile tooling down --remove-orphans
 
 e2e:
-	./mvnw verify
+	$(MVN) -pl supergraph verify
 
 smoke:
 	./scripts/smoke-test.sh
@@ -47,7 +85,13 @@ verify:
 	$(MAKE) smoke; \
 	$(MAKE) e2e
 
+# Teardown before each stack, not merely between them. The two stacks share service names, host
+# ports and image tags, so a leftover container from an aborted run is the likeliest route to a
+# false green.
+verify-all:
+	@set -e; \
+	$(MAKE) down STACK=reactive; $(MAKE) verify STACK=reactive; \
+	$(MAKE) down STACK=servlet;  $(MAKE) verify STACK=servlet
+
 clean:
-	cd ../products-subgraph && ./mvnw clean
-	cd ../pricing-subgraph && ./mvnw clean
-	./mvnw clean
+	$(MVN) clean
