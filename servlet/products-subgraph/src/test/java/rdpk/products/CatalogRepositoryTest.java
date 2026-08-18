@@ -5,37 +5,33 @@ import rdpk.model.CatalogItem;
 import rdpk.model.DigitalProduct;
 import rdpk.model.Product;
 
-import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertInstanceOf;
 
 import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
+/**
+ * Servlet twin of the reactive catalog test. The reactive version walks the same items with
+ * StepVerifier; here the list is already materialized. Records give value equality either way, so
+ * both assert order and every field rather than projecting a few of them.
+ */
 class CatalogRepositoryTest {
 
     private final CatalogRepository repository = new CatalogRepository();
 
     @Test
     void preservesSeedOrderAndExactSubtypeData() {
-        List<CatalogItem> items = repository.findAll();
+        List<CatalogItem> expected = List.of(
+                new Product("p-100", "Mechanical Keyboard",
+                        "A deterministic mechanical keyboard", CatalogCategory.PHYSICAL, 950),
+                new Product("p-200", "Wireless Mouse",
+                        "A deterministic wireless mouse", CatalogCategory.PHYSICAL, 95),
+                new Product("p-300", "USB-C Dock",
+                        "A deterministic USB-C dock", CatalogCategory.PHYSICAL, 210),
+                new DigitalProduct("d-400", "Spring GraphQL Field Guide",
+                        "A digital field guide", CatalogCategory.DIGITAL, "PDF"));
 
-        assertAll(
-                () -> assertEquals(
-                        List.of("p-100", "p-200", "p-300", "d-400"),
-                        items.stream().map(CatalogItem::id).toList()),
-                () -> assertEquals(
-                        List.of(
-                                CatalogCategory.PHYSICAL,
-                                CatalogCategory.PHYSICAL,
-                                CatalogCategory.PHYSICAL,
-                                CatalogCategory.DIGITAL),
-                        items.stream().map(CatalogItem::category).toList()),
-                () -> assertEquals(950, assertInstanceOf(Product.class, items.get(0)).weightGrams()),
-                () -> assertEquals(95, assertInstanceOf(Product.class, items.get(1)).weightGrams()),
-                () -> assertEquals(210, assertInstanceOf(Product.class, items.get(2)).weightGrams()),
-                () -> assertEquals(
-                        "PDF", assertInstanceOf(DigitalProduct.class, items.get(3)).downloadFormat()));
+        assertEquals(expected, repository.findAll());
     }
 }

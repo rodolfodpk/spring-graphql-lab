@@ -88,11 +88,15 @@ conventions are worth naming, because they look inconsistent otherwise:
   `boolean` today cannot become an R2DBC lookup tomorrow without changing every
   caller. The servlet twin makes the same point from the other side: it returns
   `Optional<BigDecimal>`, so absence is still the caller's decision to escalate.
-- **Controllers may still throw synchronously.** `parseCategory` and the `quote`
-  quantity check throw rather than returning `Mono.error`. Reactor converts a
-  throw inside an operator into an `onError` signal, so `@GraphQlExceptionHandler`
-  matches either way, and the check reads better where it is. This is also what
-  lets the two controllers keep identical error semantics.
+- **Controllers may still throw synchronously**, through two different mechanisms
+  worth telling apart. `parseCategory` and `requiredPrice` throw from *inside* an
+  operator lambda, so Reactor converts them into `onError` signals on the returned
+  publisher. `priceLabel`'s category check throws from the method body *before*
+  any `Mono` is constructed, so it propagates out of the call itself and Spring
+  GraphQL catches it at invocation. `@GraphQlExceptionHandler` matches either way,
+  which is what lets the two stacks keep identical error semantics — but only the
+  first kind is observable to `StepVerifier.expectError`, since the second escapes
+  before a publisher exists to subscribe to.
 
 For the same reason, `pricingHealth()` returning `Mono<String>` is uniformity,
 not necessity. Do not read it as a rule that every trivial computation belongs
@@ -490,6 +494,12 @@ The example uses JUnit 6 at several levels:
   batching call counts. The reactive versions assert with `StepVerifier`; the
   servlet versions assert plain values and `Optional`, which is the same
   behaviour expressed in the other idiom.
+- The reactive batching test additionally asserts *when* the lookup happens:
+  building the returned `Mono` performs no repository subscription, and exactly
+  one occurs on subscribe. That is the one behaviour the two stacks genuinely
+  differ on — the servlet twin's counting double increments in the method body,
+  because there the call *is* the lookup. Stated narrowly on purpose: `price`
+  still does eager work, assembling its id set before any publisher exists.
 - Spring GraphQL integration tests load each real schema and exercise mappings,
   entity representations, validation, Federation SDL, and the subscription
   through `ExecutionGraphQlServiceTester`.
