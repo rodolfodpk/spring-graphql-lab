@@ -45,7 +45,7 @@ help:
 	@printf '%s\n' 'See README.md for what each one does.'
 
 test:
-	$(MVN) -pl model,$(STACK)/products-subgraph,$(STACK)/pricing-subgraph -am verify
+	$(MVN) -pl model,$(STACK)/products-subgraph,$(STACK)/pricing-subgraph,$(STACK)/inventory-subgraph -am verify
 	$(MVN) -pl supergraph test
 
 build:

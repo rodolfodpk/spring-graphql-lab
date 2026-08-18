@@ -21,16 +21,19 @@ source files.
 model/                       shared domain, pure Java 21
 reactive/products-subgraph/  WebFlux + Reactor Netty
 reactive/pricing-subgraph/
+reactive/inventory-subgraph/   outbound REST + GraphQL (not composed yet)
 servlet/products-subgraph/   Spring MVC + Tomcat
 servlet/pricing-subgraph/
+servlet/inventory-subgraph/    outbound REST + GraphQL (not composed yet)
 supergraph/                  composition, Router, E2E
 ```
 
 | Module | Responsibility |
 | --- | --- |
-| `model` | `rdpk:lab-model` — the ten domain types both subgraphs share. No Spring, GraphQL, Reactor, or servlet dependency. |
+| `model` | `rdpk:lab-model` — the domain types the subgraphs share. No Spring, GraphQL, Reactor, or servlet dependency. |
 | `<stack>/products-subgraph` | Owns the catalog and the `CatalogItem` entity interface. |
 | `<stack>/pricing-subgraph` | Adds prices, quotes, category-derived labels, and the price subscription. |
+| `<stack>/inventory-subgraph` | Adds stock and supplier fields, sourced from a REST API and an upstream GraphQL service. The only subgraph doing real outbound I/O. **Not part of the federated graph yet** — tested on its own, so the composed SDL is unchanged. |
 | `supergraph` | Composes the supergraph, runs Apollo Router, owns the E2E tests. |
 
 The services use Java 21, Spring Boot 4.1, Spring GraphQL, Maven, Docker

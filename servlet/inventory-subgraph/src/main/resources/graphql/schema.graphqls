@@ -1,0 +1,19 @@
+extend schema
+  @link(url: "https://specs.apollo.dev/federation/v2.8",
+        import: ["@key", "@interfaceObject"])
+
+type CatalogItem @key(fields: "id") @interfaceObject {
+  id: ID!
+  stockLevel: Int!
+  restockEta: String
+  supplier: Supplier!
+}
+
+type Supplier {
+  name: String!
+  rating: Float!
+}
+
+type Query {
+  inventoryHealth: String!
+}

@@ -22,8 +22,10 @@
         <module>model</module>
         <module>reactive/products-subgraph</module>
         <module>reactive/pricing-subgraph</module>
+        <module>reactive/inventory-subgraph</module>
         <module>servlet/products-subgraph</module>
         <module>servlet/pricing-subgraph</module>
+        <module>servlet/inventory-subgraph</module>
         <module>supergraph</module>
     </modules>
 </project>

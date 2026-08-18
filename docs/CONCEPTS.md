@@ -155,6 +155,66 @@ classes to five differing files. Federation ownership itself is unchanged —
 `lab-model` is a compile-time library, never a runtime service, and each subgraph
 still owns and publishes its own SDL.
 
+## Outbound I/O: the inventory subgraph
+
+Products and Pricing hold their data in memory, which is why the stack comparison elsewhere in this
+document reports no difference. `inventory-subgraph` is the exception: it resolves `stockLevel`,
+`restockEta`, and `supplier` from two real upstreams — a REST warehouse API and an upstream GraphQL
+service — and so it is the first place where blocking and non-blocking code do genuinely different
+things.
+
+It is deliberately **not** wired into the federated graph. It has no Compose service, no entry in
+`router/supergraph.yaml`, and contributes nothing to the composed supergraph, so the byte-identical
+SDL parity proof is untouched. It is exercised by its own tests. Wiring it in is a follow-up.
+
+### One response, two fields
+
+Both upstreams are batched through **named DataLoaders**, not `@BatchMapping`. That is a deliberate
+departure from Pricing, and the reason is `restockEta`: two `@BatchMapping` methods would each get
+their own loader, so a query selecting `stockLevel` and `restockEta` would make two warehouse calls
+for the same data. One loader serving both fields makes it one.
+
+A query selecting all three fields for any number of items performs exactly one GET and one POST.
+The integration test asserts that with WireMock's request counting — and unlike a hand-written
+counting double, the assertion is over real HTTP:
+
+```java
+wireMock.verify(1, getRequestedFor(urlPathEqualTo("/warehouse")));
+wireMock.verify(1, postRequestedFor(urlEqualTo("/graphql")));
+```
+
+This is where the N+1 material elsewhere in this document stops being theoretical. With in-memory
+maps a missing batch is a few extra `HashMap` lookups; here it is a network round trip per item.
+
+### Why WireMock rather than Spring's mock servers
+
+The mock has to serve both stacks identically. `MockRestServiceServer` and `@RestClientTest` bind to
+`RestClient`/`RestTemplate` internals and cannot mock `WebClient`; a stubbed `ClientHttpConnector`
+is reactive-only. Either choice would mean two different mocking strategies for one behaviour.
+WireMock is a real socket, so it is protocol-level and stack-agnostic — and an upstream GraphQL
+service is just `POST /graphql` with a JSON body, which needs no GraphQL-aware mock.
+
+The dependency is `wiremock-standalone`, not `wiremock`. Every subgraph module enforces
+`dependencyConvergence`; plain `wiremock` brings 29 transitive dependencies that collide with
+Boot-managed versions, while the shaded jar brings none.
+
+### The error contract, and two traps worth naming
+
+HTTP 5xx, a read timeout, a malformed warehouse payload, and a GraphQL response carrying a
+non-empty `errors` array all become `InventoryException("INVENTORY_UNAVAILABLE", …)`. That last one
+is the case a REST-shaped client forgets: the response is HTTP 200, so a status check alone treats
+degraded data as success.
+
+Two implementation details differ between the stacks and are easy to get wrong:
+
+- **`mapNotNull`, not `map`.** `restockEta` is nullable. Reactor treats a `null` returned from `map`
+  as an error, so the reactive resolver must use `mapNotNull`; the servlet twin's
+  `CompletableFuture.thenApply` accepts null and needs no equivalent. A nullable field is the kind
+  of thing that passes every unit test and fails on the one stubbed row that has no ETA.
+- **HTTP/1.1 is pinned on the servlet client.** The JDK's `HttpClient` negotiates HTTP/2 by default,
+  and a stream cancelled by a read timeout poisons the pooled connection — the *next* request then
+  fails with `RST_STREAM` instead of the timeout the caller is handling.
+
 ## Subgraphs, supergraph, Router, and Rover
 
 A subgraph owns part of a larger graph:

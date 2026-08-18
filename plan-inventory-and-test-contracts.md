@@ -67,9 +67,9 @@ Add these plain records/exceptions to `lab-model` (no production dependencies):
 - `InventoryException(String code, String message, Throwable cause)` with the existing two-argument
   convenience constructor and `code()` accessor.
 
-Each inventory module has a non-final `WarehouseClient` and `SupplierClient`, with an injected
-constructor and a direct-construction convenience constructor. Configure these properties in each
-module:
+Each inventory module has a non-final `WarehouseClient` and `SupplierClient`, with an
+`@Autowired` injected constructor and a direct-construction convenience constructor. Configure
+these properties in each module:
 
 ```properties
 app.inventory.warehouse-base-url=http://localhost:0
@@ -77,17 +77,20 @@ app.inventory.supplier-base-url=http://localhost:0
 app.inventory.timeout=500ms
 ```
 
-Tests override both URLs with one in-process WireMock server through `@DynamicPropertySource`.
-Reactive clients use `WebClient` and `HttpGraphQlClient`; servlet clients use `RestClient` and
-`HttpSyncGraphQlClient`. Configure the reactive connector with Reactor Netty `responseTimeout` and
-the servlet `JdkClientHttpRequestFactory` with `setReadTimeout(Duration)`, both from
-`app.inventory.timeout`.
+`InventoryGraphQlIT` overrides both URLs with one in-process WireMock server through
+`@DynamicPropertySource`. Direct client tests use each client's convenience constructor with the
+WireMock base URL instead of starting a Spring context. Reactive clients use `WebClient` and
+`HttpGraphQlClient`; servlet clients use `RestClient` and `HttpSyncGraphQlClient`. Configure the
+reactive connector with Reactor Netty `responseTimeout` and the servlet
+`JdkClientHttpRequestFactory` with `setReadTimeout(Duration)`, both from `app.inventory.timeout`.
 
 The warehouse bulk endpoint is `GET /warehouse?ids=<comma-separated IDs in first-seen order>` and
 returns a JSON array of `Stock` rows. The supplier endpoint is `POST /graphql`; its bulk query takes
-the same ordered ID list and returns suppliers keyed by product ID. HTTP 5xx, malformed/missing
-warehouse data, request timeout, transport failure, and any GraphQL response with a non-empty
-`errors` array all become `InventoryException("INVENTORY_UNAVAILABLE", ...)`.
+the same ordered ID list and selects `productId`, `name`, and `rating`. Map the module-local
+transport record `SupplierRow(String productId, String name, double rating)` into an ID-keyed
+`Map<String, Supplier>`; `Supplier` remains the public/domain value without a product ID. HTTP 5xx,
+malformed/missing warehouse data, request timeout, transport failure, and any GraphQL response with
+a non-empty `errors` array all become `InventoryException("INVENTORY_UNAVAILABLE", ...)`.
 
 ### Batching and controller behavior
 
@@ -149,9 +152,9 @@ Use JUnit 6 `WireMockExtension` and identical REST/GraphQL fixture bodies in bot
    `verify(1, getRequestedFor(...))` fails with two warehouse calls. Revert. An assertion that
    cannot fail is decoration.
 3. Run each stack's scoped reactor build and `dependency:tree`; dependency convergence passes and
-   `lab-model` retains no production dependencies. Confirm once, deliberately, that substituting
-   plain `wiremock` for `wiremock-standalone` fails this step — that is the whole reason for the
-   artifact choice.
+   `lab-model` retains no production dependencies. `wiremock-standalone` is mandatory because it
+   avoids WireMock's large unmanaged transitive graph; do not make a hypothetical plain-WireMock
+   failure a permanent acceptance criterion.
 4. Run both direct inventory Docker builds, then `make build` for the existing composed pair.
    Inventory is absent from Compose, so `make build` alone never exercises its Dockerfiles.
 5. Run `make verify-all`; the two-service federated E2E and SDL composition checks stay unchanged.

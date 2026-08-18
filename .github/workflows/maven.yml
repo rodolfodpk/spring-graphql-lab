@@ -42,8 +42,10 @@ jobs:
             supergraph/pom.xml
             reactive/products-subgraph/pom.xml
             reactive/pricing-subgraph/pom.xml
+            reactive/inventory-subgraph/pom.xml
             servlet/products-subgraph/pom.xml
             servlet/pricing-subgraph/pom.xml
+            servlet/inventory-subgraph/pom.xml
 
       # The load-bearing check for the model/adapters split. Line 1 is lab-model itself; every
       # other line is a dependency and must be test-scoped. Deliberately avoids bracket escapes,
@@ -91,6 +93,7 @@ jobs:
             model/target/site/jacoco/jacoco.xml,
             ${{ matrix.stack }}/products-subgraph/target/site/jacoco/jacoco.xml,
             ${{ matrix.stack }}/pricing-subgraph/target/site/jacoco/jacoco.xml
+            ${{ matrix.stack }}/inventory-subgraph/target/site/jacoco/jacoco.xml
           flags: ${{ matrix.stack }}
           fail_ci_if_error: true
           token: ${{ secrets.CODECOV_TOKEN }}

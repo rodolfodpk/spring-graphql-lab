@@ -13,8 +13,10 @@ COPY model/pom.xml model/pom.xml
 COPY supergraph/pom.xml supergraph/pom.xml
 COPY reactive/products-subgraph/pom.xml reactive/products-subgraph/pom.xml
 COPY reactive/pricing-subgraph/pom.xml reactive/pricing-subgraph/pom.xml
+COPY reactive/inventory-subgraph/pom.xml reactive/inventory-subgraph/pom.xml
 COPY servlet/products-subgraph/pom.xml servlet/products-subgraph/pom.xml
 COPY servlet/pricing-subgraph/pom.xml servlet/pricing-subgraph/pom.xml
+COPY servlet/inventory-subgraph/pom.xml servlet/inventory-subgraph/pom.xml
 RUN ./mvnw -q -DskipTests -pl reactive/products-subgraph -am dependency:go-offline
 COPY model/src model/src
 COPY reactive/products-subgraph/src reactive/products-subgraph/src
