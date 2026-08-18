@@ -89,10 +89,16 @@ jobs:
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5
         with:
+          # lab-model is deliberately absent. It is a dependency-free bag of value types plus
+          # Money, so its line coverage is dominated by generated record accessors and reads ~36%
+          # by construction. The subgraph tests do exercise those types, but JaCoCo reports per
+          # module and lab-model is an external jar to them, so that coverage is attributed
+          # nowhere. Reporting the number anyway just trains everyone to ignore the status.
+          # Every line below needs a trailing comma except the last -- the folded scalar joins
+          # them, so a missing comma silently produces one space-separated path.
           files: >-
-            model/target/site/jacoco/jacoco.xml,
             ${{ matrix.stack }}/products-subgraph/target/site/jacoco/jacoco.xml,
-            ${{ matrix.stack }}/pricing-subgraph/target/site/jacoco/jacoco.xml
+            ${{ matrix.stack }}/pricing-subgraph/target/site/jacoco/jacoco.xml,
             ${{ matrix.stack }}/inventory-subgraph/target/site/jacoco/jacoco.xml
           flags: ${{ matrix.stack }}
           fail_ci_if_error: true
