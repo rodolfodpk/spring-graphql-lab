@@ -58,9 +58,14 @@ binding expects services that are already running. Use the Makefile instead.
 Prerequisites are Java 21+, Docker Compose v2, Make, and curl.
 
 ```sh
-make up                 # reactive stack (default)
-make up STACK=servlet   # the same graph on Spring MVC and Tomcat
+make up                                  # reactive: Netty, event loop
+make up STACK=servlet                    # servlet: Tomcat, platform threads
+make up STACK=servlet THREADS=virtual    # servlet: Tomcat, virtual threads
 ```
+
+Three runnable configurations from two code trees. Add `DELAY=50ms` to give the
+repositories a simulated round trip — without I/O to overlap the three are
+indistinguishable, which is the honest result but not an instructive one.
 
 The root `Makefile` delegates to `supergraph/Makefile`, so every target works
 from either directory. The runbook below uses `supergraph`.

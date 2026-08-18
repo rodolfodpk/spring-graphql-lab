@@ -11,6 +11,26 @@ $(error STACK must be 'reactive' or 'servlet', got '$(STACK)')
 endif
 export STACK
 
+# Orthogonal to STACK, because neither is a code variant: no source differs between platform and
+# virtual threads, and the delay is a property. Both are passed to the containers as environment,
+# so switching them needs no rebuild.
+#
+#   make up STACK=servlet THREADS=virtual DELAY=50ms
+#
+# THREADS is meaningful only on the servlet stack; the reactive stack has no thread-per-request
+# model for virtual threads to replace, and ignores it.
+THREADS ?= platform
+ifeq ($(THREADS),platform)
+export THREADS_VIRTUAL = false
+else ifeq ($(THREADS),virtual)
+export THREADS_VIRTUAL = true
+else
+$(error THREADS must be 'platform' or 'virtual', got '$(THREADS)')
+endif
+
+DELAY ?= 0ms
+export DELAY
+
 # Every Maven invocation goes through the root wrapper. The nested wrappers are gone, because a
 # standalone module build cannot resolve lab-model.
 MVN := cd .. && ./mvnw
@@ -21,6 +41,7 @@ help:
 	@printf '%s\n' 'Targets: test build subgraphs export-schemas compose compose-check'
 	@printf '%s\n' '         up smoke e2e verify verify-all down clean'
 	@printf '%s\n' 'All accept STACK=reactive|servlet (default reactive).'
+	@printf '%s\n' 'Runtime knobs: THREADS=platform|virtual  DELAY=0ms'
 	@printf '%s\n' 'See README.md for what each one does.'
 
 test:

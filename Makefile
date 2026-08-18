@@ -12,6 +12,8 @@ SHELL := /bin/sh
 # that validates it and rejects a typo.
 
 STACK ?= reactive
+THREADS ?= platform
+DELAY ?= 0ms
 
 TARGETS := test build subgraphs export-schemas compose compose-check \
            up down e2e smoke verify verify-all clean
@@ -23,6 +25,7 @@ help:
 	@printf '%s\n' 'Delegates to supergraph/Makefile. Targets:'
 	@printf '  %s\n' $(TARGETS)
 	@printf '%s\n' 'Add STACK=reactive|servlet to pick a stack (default reactive).'
+	@printf '%s\n' 'Runtime knobs: THREADS=platform|virtual  DELAY=0ms (e.g. DELAY=50ms).'
 
 $(TARGETS):
-	@$(MAKE) --no-print-directory -C supergraph $@ STACK=$(STACK)
+	@$(MAKE) --no-print-directory -C supergraph $@ STACK=$(STACK) THREADS=$(THREADS) DELAY=$(DELAY)

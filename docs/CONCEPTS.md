@@ -70,12 +70,31 @@ providing all along.
 
 ### What reactive buys here, and what it does not
 
-Nothing in this lab blocks. There is no database, and no subgraph makes an
-outbound HTTP call. So the reactive stack is a demonstration of the *programming
-model*, not a throughput improvement. Claiming otherwise would be dishonest:
-with no I/O to overlap, Netty and Tomcat serve this workload equally well — and
-now the repository proves it rather than asserting it, since both stacks pass
-the same suite.
+Nothing in this lab blocks by default. There is no database, and no subgraph
+makes an outbound HTTP call. So the reactive stack is a demonstration of the
+*programming model*, not a throughput improvement. Claiming otherwise would be
+dishonest: with no I/O to overlap, Netty and Tomcat serve this workload equally
+well — and now the repository proves it rather than asserting it, since both
+stacks pass the same suite.
+
+That is also why `app.repository.delay` exists. Set it and the repositories take
+a simulated round trip, which is the only condition under which the models can
+differ at all. The wait is identical; what differs is its cost. Reactive defers a
+subscription and holds no thread. Servlet blocks its request thread — and
+`spring.threads.virtual.enabled` decides whether that is a platform thread or a
+virtual one, giving three runnable configurations from two code trees.
+
+Worth stating plainly, because it reframes the whole comparison: **on Java 21,
+virtual threads take most of the scalability argument away from reactive.**
+Blocking code on virtual threads scales close to non-blocking code, without the
+operator vocabulary. What reactive still uniquely offers is backpressure — a
+consumer able to say *slow down* — and operator-level composition of concurrent
+work. Neither is exercised by this lab's five fixed emissions, and neither is
+something a subgraph in a federated system usually needs, since Router does the
+fan-out.
+
+The delay defaults to zero, so every test and the SDL parity proof are
+unaffected.
 
 What it does buy is a codebase shaped the way a reactive service is shaped. Two
 conventions are worth naming, because they look inconsistent otherwise:

@@ -73,8 +73,10 @@ repositories.
 
 ## Make targets
 
-Every target accepts `STACK=reactive|servlet`, defaulting to `reactive`. All of
-them also work from the repository root, which forwards here.
+Every target accepts `STACK=reactive|servlet`, defaulting to `reactive`, plus two
+runtime knobs: `THREADS=platform|virtual` and `DELAY=0ms`. All of them also work
+from the repository root, which forwards here. See
+[Comparing the three configurations](#comparing-the-three-configurations).
 
 | Target | What it does |
 | --- | --- |
@@ -96,6 +98,45 @@ them also work from the repository root, which forwards here.
 `build`, `subgraphs`, and `export-schemas` are the granular steps `up` and
 `compose` are built from — useful when diagnosing a single stage, rarely needed
 otherwise.
+
+## Comparing the three configurations
+
+`THREADS` and `DELAY` are deliberately *orthogonal* to `STACK`, because neither is
+a code variant — no source differs between platform and virtual threads, and the
+delay is a property. Both are passed to the containers as environment, so
+switching them needs no rebuild:
+
+```sh
+make up STACK=reactive                          # Netty, event loop
+make up STACK=servlet                           # Tomcat, platform threads
+make up STACK=servlet THREADS=virtual           # Tomcat, virtual threads
+```
+
+Three runnable configurations out of two code trees. `THREADS` is meaningful only
+on the servlet stack; the reactive stack has no thread-per-request model for
+virtual threads to replace, and ignores it.
+
+**`DELAY` is what makes the comparison mean anything.** With no I/O to overlap,
+all three configurations are indistinguishable — that is the honest result this
+lab reports elsewhere, and no amount of load will change it. Give the
+repositories a simulated round trip and the models finally diverge:
+
+```sh
+make up STACK=servlet THREADS=virtual DELAY=50ms
+```
+
+The wait is the same 50ms in each case; what differs is what it costs. The
+reactive stack defers a subscription and holds no thread. The servlet stack
+blocks its request thread — a platform thread under `THREADS=platform`, a virtual
+one under `THREADS=virtual`, which is precisely the tradeoff virtual threads
+exist to change.
+
+`DELAY` defaults to `0ms`, so every test, the composition check, and the E2E
+suite run exactly as before and remain deterministic. Turn it on only for
+comparison runs.
+
+Measuring throughput needs a real load tool — `curl` in a shell loop measures
+process startup, not the server.
 
 ## Start everything
 
