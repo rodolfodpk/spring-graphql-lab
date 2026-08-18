@@ -58,10 +58,12 @@ binding expects services that are already running. Use the Makefile instead.
 Prerequisites are Java 21+, Docker Compose v2, Make, and curl.
 
 ```sh
-cd supergraph
 make up                 # reactive stack (default)
 make up STACK=servlet   # the same graph on Spring MVC and Tomcat
 ```
+
+The root `Makefile` delegates to `supergraph/Makefile`, so every target works
+from either directory. The runbook below uses `supergraph`.
 
 Both stacks bind the same ports and answer identically, so everything below
 works the same either way. Only one pair runs at a time.
@@ -81,7 +83,7 @@ troubleshooting, schema composition, and all available Make targets.
 
 ## Test
 
-From `supergraph`:
+From the repository root, or from `supergraph`:
 
 ```sh
 make test                  # model + the selected stack's subgraphs

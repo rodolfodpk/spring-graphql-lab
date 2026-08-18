@@ -17,6 +17,7 @@ Each subgraph exists twice — once per stack — over one shared domain model:
 ```text
 spring-graphql-lab/
 ├── pom.xml                     aggregator only; root mvnw is the sole entry point
+├── Makefile                    delegates to supergraph/Makefile
 ├── model/                      rdpk:lab-model, pure Java 21
 ├── reactive/
 │   ├── products-subgraph/      WebFlux + Reactor Netty
@@ -27,7 +28,10 @@ spring-graphql-lab/
 └── supergraph/
 ```
 
-Run all commands in this README from `supergraph`.
+Run all commands in this README from `supergraph`. The root `Makefile` forwards
+every target here, so `make up STACK=servlet` works from the repository root too;
+this file stays authoritative because the scripts, `compose.yaml`, and the Rover
+volume mounts are all relative to this directory.
 
 ## Choosing a stack
 
